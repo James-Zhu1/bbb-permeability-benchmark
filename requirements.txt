@@ -1,0 +1,6 @@
+rdkit
+PyTDC
+scikit-learn
+numpy
+pandas
+setuptools<81  # PyTDC imports pkg_resources, removed in newer setuptools

@@ -1,0 +1,42 @@
+# Byte-compiled
+__pycache__/
+*.py[cod]
+*.so
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Environment variables / secrets
+.env
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+
+# --- project-specific ---
+
+# Raw and processed data (re-downloadable from TDC)
+data/
+
+# Model checkpoints and cached embeddings (large binaries)
+checkpoints/
+*.ckpt
+*.pt
+*.pth
+*.npy
+*.npz
+
+# TDC's default download location if you run scripts from the repo root
+data/
+oracle/
