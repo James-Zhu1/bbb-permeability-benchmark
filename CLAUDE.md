@@ -25,8 +25,13 @@ project at once. Go step by step; let him read and run each piece before the nex
   generalization to unseen scaffolds, so independent held-out scaffold regions
   give an honest mean +/- std. (TDC benchmark-group convention — fixed test set
   + 5 train/val reshuffles — was considered and rejected as the primary protocol
-  because it only measures seed noise on a single test set. May be added later
-  as a secondary, leaderboard-comparable reporting mode.)
+  because it only measures seed noise on a single test set.)
+- SECONDARY PROTOCOL `tdc` (leaderboard-comparable): TDC admet_group data, RAW
+  (2030 rows, no cleaning, so the test set matches the leaderboard exactly);
+  fixed 406-mol test set + TDC scaffold train/valid with seeds 1-5 (70/10/20).
+  Saved as `splits/tdc/split_{0..4}.json` (split i = seed i+1). Every runner
+  takes `--protocol scaffold5|tdc`; `bbb.splits.load_protocol()` pairs data
+  with splits. For tdc, quote TDC's official evaluator (`evaluate_many`, ddof=0 std).
 - SANITY CHECK: on at least one split, Morgan+RF AUROC should land ~0.88-0.91
   (published ballpark). If it does, the harness is correct.
 - SHARED INVARIANTS: `splits/` is committed and loaded by all models;
@@ -67,8 +72,13 @@ bbb-permeability-benchmark/
       (2030 raw; salts stripped, 11 label-conflict mols dropped, dups merged),
       1564/195/196 per split, disjoint, zero scaffold leakage, both classes in all sets.
       Split files carry a dataset fingerprint; load_split() refuses on mismatch.
-- [ ] Step 1B: featurizers/morgan.py + metrics.py + models/fingerprint_rf.py +
-      scripts/run_fingerprint_rf.py. RF across 5 splits; AUROC/AUPRC mean +/- std.
+- [x] Step 1B: featurizers/morgan.py + metrics.py + models/fingerprint_rf.py +
+      scripts/run_fingerprint_rf.py. Morgan r2/2048 + RF(500, untuned):
+      test AUROC 0.924 ± 0.024 (split 0 = 0.900, in sanity range), AUPRC 0.971 ± 0.013
+      (random 0.763). Shuffled-label control: AUROC ~0.56 (not 0.50) — traced to
+      RF scores tracking molecule size (size alone AUROC 0.69), not label leakage.
+- [x] TDC protocol added. Morgan+RF on tdc: AUROC 0.865 ± 0.005 (TDC evaluator),
+      ~rank 18/26 on leaderboard; TDC's test set is harder than any of our 5.
 - [ ] Step 2: GNN from scratch
 - [ ] Step 3: ChemBERTa fine-tune
 - [ ] Step 4: frozen Boltz-2 embeddings

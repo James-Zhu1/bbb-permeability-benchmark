@@ -94,6 +94,38 @@ def load_dataset() -> pd.DataFrame:
     return clean(download_raw())
 
 
+def tdc_group():
+    """TDC's ADMET benchmark group (downloads to data/raw on first use)."""
+    from tdc.benchmark_group import admet_group
+
+    RAW_DIR.mkdir(parents=True, exist_ok=True)
+    return admet_group(path=str(RAW_DIR))
+
+
+def load_tdc_benchmark() -> pd.DataFrame:
+    """TDC benchmark-group data for the leaderboard-comparable protocol.
+
+    Columns: [smiles, label, drug_id, tdc_set], where tdc_set is "train_val"
+    or "test". Rows are TDC's train_val file followed by its test file, in
+    TDC's order.
+
+    Deliberately NOT cleaned (no salt stripping, no dedup, no dropping
+    label conflicts): leaderboard numbers are computed on TDC's exact test
+    rows, so changing them would make our numbers incomparable.
+    """
+    bench = tdc_group().get("BBB_Martins")
+    parts = []
+    for name in ("train_val", "test"):
+        part = bench[name]
+        parts.append(pd.DataFrame({
+            "smiles": part["Drug"],
+            "label": part["Y"].astype(int),
+            "drug_id": part["Drug_ID"].astype(str),
+            "tdc_set": name,
+        }))
+    return pd.concat(parts, ignore_index=True)
+
+
 def dataset_fingerprint(df: pd.DataFrame) -> str:
     """Short hash of the exact (smiles, label) rows, in order.
 
