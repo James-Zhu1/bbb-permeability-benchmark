@@ -4,3 +4,6 @@ scikit-learn
 numpy
 pandas
 setuptools<81  # PyTDC imports pkg_resources, removed in newer setuptools
+# Step 2+ (GNN)
+torch
+torch_geometric

@@ -39,6 +39,11 @@ project at once. Go step by step; let him read and run each piece before the nex
 - Split fractions 80/10/10. Leakage rule: a whole scaffold group goes ENTIRELY
   into one of train/valid/test — molecules sharing a scaffold are never split.
 - Primary metric AUROC (data imbalanced); also report AUPRC.
+- NO HYPERPARAMETER TUNING (decided after Step 2): every model uses sensible
+  default settings, no search, so the comparison is about representations, not
+  tuning effort. Write-up must state "default hyperparameters, untuned". If
+  tuning is added later: one shared tune.py, equal budget for every model,
+  selection on VALID AUROC only (mean over 5 splits), test touched once.
 
 ## Environment
 - Python 3.11 venv at `.venv/` (built from Homebrew `/opt/homebrew/bin/python3.11`;
@@ -80,5 +85,14 @@ bbb-permeability-benchmark/
 - [x] TDC protocol added. Morgan+RF on tdc: AUROC 0.865 ± 0.005 (TDC evaluator),
       ~rank 18/26 on leaderboard; TDC's test set is harder than any of our 5.
 - [ ] Step 2: GNN from scratch
+  - [x] 2A: torch + torch_geometric installed (Apple M5; CPU fine for small graphs).
+        featurizers/graph.py: smiles -> PyG Data, 32 atom feats, 7 bond feats.
+  - [x] 2B: models/gnn.py (GINE, 3 layers, hidden 64, residual+BatchNorm, mean pool,
+        33k params; Adam 1e-3, early stopping on valid AUROC, patience 30) +
+        scripts/run_gnn.py. Reproducible (seeded, CPU). ~10s/split.
+        scaffold5 test AUROC 0.900 ± 0.048; tdc 0.847 ± 0.034 (TDC evaluator)
+        — below RF (0.924 / 0.865), in line with leaderboard from-scratch GNNs
+        (GCN 0.842, AttentiveFP 0.855). Known issue: tdc split 2 picks epoch 3
+        (valid AUROC erratic after) -> test 0.779. Untuned.
 - [ ] Step 3: ChemBERTa fine-tune
 - [ ] Step 4: frozen Boltz-2 embeddings
