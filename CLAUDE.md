@@ -94,5 +94,12 @@ bbb-permeability-benchmark/
         — below RF (0.924 / 0.865), in line with leaderboard from-scratch GNNs
         (GCN 0.842, AttentiveFP 0.855). Known issue: tdc split 2 picks epoch 3
         (valid AUROC erratic after) -> test 0.779. Untuned.
-- [ ] Step 3: ChemBERTa fine-tune
+- [x] Step 3: ChemBERTa fine-tune. models/chemberta.py + scripts/run_chemberta.py.
+      DeepChem/ChemBERTa-77M-MLM pinned @ed8a5374 (weights = pytorch_model.bin,
+      loaded weights_only; safetensors exists only on unmerged refs/pr/2). 3.4M params,
+      standard RoBERTa head, AdamW 2e-5, wd 0.01, batch 32, patience 10. CPU (beat MPS).
+      Reproducible (split 0 identical across runs). ~2 min/split.
+      scaffold5 test AUROC 0.891 ± 0.052 (loses to RF on 5/5 splits; split 0: valid
+      0.939 but test 0.815). tdc 0.870 ± 0.020 (TDC evaluator) — best of 3 on tdc but
+      beats RF on only 3/5 seeds; within noise. Untuned.
 - [ ] Step 4: frozen Boltz-2 embeddings
