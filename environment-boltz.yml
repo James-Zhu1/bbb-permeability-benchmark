@@ -1,0 +1,21 @@
+# Separate conda env for Boltz-2 (Step 4: frozen Boltz-2 embeddings).
+#
+#   conda env create -f environment-boltz.yml
+#   conda activate boltz
+#
+# Why separate from `bbb`: Boltz pins scikit-learn==1.6.1 and rdkit>=2024.3.2,
+# which clash with `bbb` (sklearn 1.9.1, rdkit 2023.09.6). A different RDKit
+# could change canonical SMILES and break the dataset fingerprint, so this env
+# never loads our dataset: `bbb` writes Boltz input files, this env only turns
+# them into embeddings, and `bbb` reads the results back.
+#
+# Weights download on first run to ~/.boltz (or $BOLTZ_CACHE).
+name: boltz
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+      - boltz[cuda]==2.2.1
