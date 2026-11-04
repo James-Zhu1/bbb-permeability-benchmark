@@ -102,4 +102,15 @@ bbb-permeability-benchmark/
       scaffold5 test AUROC 0.891 ± 0.052 (loses to RF on 5/5 splits; split 0: valid
       0.939 but test 0.815). tdc 0.870 ± 0.020 (TDC evaluator) — best of 3 on tdc but
       beats RF on only 3/5 seeds; within noise. Untuned.
+  - [x] 3b: FROZEN ChemBERTa + trained head (body never updated; run locally on Mac).
+        featurizers/chemberta_embed.py (pooling cls|mean, padding-masked mean),
+        models/mlp_head.py (same head design as fine-tuned: dropout .144 -> d->d tanh
+        -> d->1; Adam 1e-3, patience 30, max 200 — reusable for Boltz-2 vectors),
+        scripts/run_chemberta_frozen.py --pooling cls|mean.
+        scaffold5: frozen-mean 0.906 ± 0.050, frozen-CLS 0.880 ± 0.027 (fine-tuned 0.891).
+        tdc: frozen-mean 0.861 ± 0.010, frozen-CLS 0.809 ± 0.006 (fine-tuned 0.870).
+        Takeaways: frozen [CLS] is clearly worst (loses to fine-tuned 5/5 on tdc) —
+        pre-training never trained that slot. Frozen-mean ≈ fine-tuned (wins 3/5, 2/5):
+        fine-tuning the body adds ~nothing over mean-pooled frozen features. Nothing
+        beats Morgan+RF clearly. Note: tdc frozen-mean split 1 hit the 200-epoch cap.
 - [ ] Step 4: frozen Boltz-2 embeddings
