@@ -50,25 +50,40 @@ project at once. Go step by step; let him read and run each piece before the nex
   3.13 causes friction with PyTDC / Torch / PyG / Boltz-2). Package installed
   editable: `pip install -r requirements.txt && pip install -e .`
 - PyTDC needs `setuptools<81` (imports pkg_resources) — pinned in requirements.txt.
-- Step-1 deps: rdkit, PyTDC, scikit-learn, numpy, pandas.
+- Steps 1-3 run on the Mac (CPU). Results in results/ come from the Mac.
+
+### Hopper HPC (GPU work, Step 4+)
+- `ssh hopper` (jzii2024@hopper.mckenna.edu). Password login only; James opens a
+  shared SSH connection (ControlMaster) in his own terminal; if it expires, ask
+  him to log in again. Repo at /hopper/home/jzii2024/bbb-permeability-benchmark.
+- RULES: modify files only inside /hopper/home/jzii2024. Slurm partition `main`
+  for ALL jobs (never `debug`). Nodes: 4x NVIDIA L40S (46 GB) each.
+- Standard conda: `conda env create -f environment.yml` then `conda activate bbb`
+  (~/miniconda3/envs/bbb). conda is conda-forge only (~/.condarc; defaults removed
+  from ~/miniconda3/.condarc) — do NOT `conda tos accept` (James's legal call).
+- Sync: edit/commit/push on the Mac, `git pull` on Hopper (Hopper can't push).
+- Verified: slurm/check_env.sbatch reproduces Morgan+RF 0.924 ± 0.024 on Hopper
+  (identical test AUROCs; some valid/AUPRC differ in 3rd decimal: CPU/OS).
+- Boltz-2 gets its OWN env (`boltz`): it pins scikit-learn==1.6.1, rdkit>=2024.3.2,
+  which clash with `bbb`. A newer RDKit could change canonical SMILES and break
+  the dataset fingerprint, so Boltz never re-derives the dataset: `bbb` exports
+  SMILES -> `boltz` writes embeddings -> `bbb` pools + trains the head.
 
 ## Repo structure
 ```
 bbb-permeability-benchmark/
-├── requirements.txt
+├── requirements.txt / environment.yml / pyproject.toml
 ├── data/raw/              # downloaded dataset (gitignored)
-├── splits/               # 5 splits as index files — COMMITTED. the contract.
+├── splits/               # scaffold5 splits (+ splits/tdc/) — COMMITTED. the contract.
 ├── src/bbb/
-│   ├── __init__.py
-│   ├── data.py           # dataset -> canonical dataframe [smiles, label]
-│   ├── splits.py         # scaffold split: generate, save, load
+│   ├── data.py           # dataset -> canonical dataframe [smiles, label]; TDC loader
+│   ├── splits.py         # scaffold split, tdc split, load_protocol()
 │   ├── metrics.py        # auroc/auprc — shared by ALL models
-│   ├── featurizers/morgan.py   # smiles -> fingerprint matrix
-│   └── models/fingerprint_rf.py
-├── scripts/
-│   ├── make_splits.py        # run once, writes splits/
-│   └── run_fingerprint_rf.py
-└── results/
+│   ├── featurizers/      # morgan.py, graph.py, chemberta_embed.py
+│   └── models/           # fingerprint_rf.py, gnn.py, chemberta.py, mlp_head.py
+├── scripts/              # make_splits.py, run_*.py (all take --protocol)
+├── slurm/                # Hopper job scripts (logs/ gitignored)
+└── results/              # {model}_{protocol}.json
 ```
 
 ## Progress

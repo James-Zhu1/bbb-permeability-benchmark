@@ -1,0 +1,20 @@
+# Conda environment for the BBB permeability benchmark.
+#
+#   conda env create -f environment.yml      # once
+#   conda activate bbb                       # every session
+#
+# After editing requirements.txt:   conda env update -f environment.yml --prune
+#
+# Conda provides only Python + pip; all packages come from requirements.txt,
+# so the conda env and a plain venv (e.g. on a Mac) install the same things.
+# conda-forge only ("nodefaults"): community channel, no Anaconda ToS needed.
+name: bbb
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+      - -r requirements.txt
+      - -e .

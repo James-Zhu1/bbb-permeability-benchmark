@@ -40,3 +40,6 @@ checkpoints/
 # TDC's default download location if you run scripts from the repo root
 data/
 oracle/
+
+# Slurm job logs (Hopper)
+slurm/logs/
