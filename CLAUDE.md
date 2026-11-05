@@ -122,10 +122,24 @@ bbb-permeability-benchmark/
         models/mlp_head.py (same head design as fine-tuned: dropout .144 -> d->d tanh
         -> d->1; Adam 1e-3, patience 30, max 200 — reusable for Boltz-2 vectors),
         scripts/run_chemberta_frozen.py --pooling cls|mean.
-        scaffold5: frozen-mean 0.906 ± 0.050, frozen-CLS 0.880 ± 0.027 (fine-tuned 0.891).
-        tdc: frozen-mean 0.861 ± 0.010, frozen-CLS 0.809 ± 0.006 (fine-tuned 0.870).
-        Takeaways: frozen [CLS] is clearly worst (loses to fine-tuned 5/5 on tdc) —
-        pre-training never trained that slot. Frozen-mean ≈ fine-tuned (wins 3/5, 2/5):
-        fine-tuning the body adds ~nothing over mean-pooled frozen features. Nothing
-        beats Morgan+RF clearly. Note: tdc frozen-mean split 1 hit the 200-epoch cap.
-- [ ] Step 4: frozen Boltz-2 embeddings
+        CURRENT (re-run in Step 4 with input standardization, same as Boltz):
+        scaffold5: frozen-mean 0.922 ± 0.036, frozen-CLS 0.878 ± 0.027 (fine-tuned 0.891).
+        tdc: frozen-mean 0.850 ± 0.011, frozen-CLS 0.821 ± 0.012 (fine-tuned 0.870).
+        (First run, unscaled, in commit fee3962: 0.906/0.880 and 0.861/0.809.)
+        Takeaways: frozen [CLS] clearly worse than mean pooling — pre-training never
+        trained that slot. Frozen-mean ≈ fine-tuned: fine-tuning the body adds little.
+- [x] Step 4: frozen Boltz-2 embeddings (GPU on Hopper; head trained on the Mac).
+      boltz 2.2.1 in its own env (environment-boltz.yml), weights in ~/.boltz (4.8 GB).
+      Pipeline: scripts/boltz_export_inputs.py (bbb: 1966 unique ligand-only YAMLs,
+      largest fragment, row->mol_id index) -> slurm/boltz_embed.sbatch (--write_embeddings,
+      --sampling_steps 10 --diffusion_samples 1; s is pre-diffusion, pilot 404413 showed
+      bit-identical s vs 200 steps; full job 404441, 45 min on 1 L40S) ->
+      scripts/boltz_pool_embeddings.py (s [1,atoms,384] -> mean over atoms) ->
+      scripts/run_boltz_frozen.py (same MLP head as 3b).
+      2/1966 molecules not embeddable: m9d430bdbfc42 (229 atoms w/ H -> atom name CL108
+      > Boltz's 4-char limit) and m9338b44f2059 (RDKit 3D conformer failed); imputed
+      with the per-split TRAINING mean. Boltz s scale ~70x ChemBERTa (per-dim std ~7,
+      values to ~950) -> added train-fit standardization to mlp_head.py for ALL frozen
+      models (decision A).
+      RESULT: scaffold5 0.864 ± 0.041, tdc 0.805 ± 0.008 (TDC evaluator) — lowest of
+      all models; loses to Morgan+RF on 10/10 splits.
