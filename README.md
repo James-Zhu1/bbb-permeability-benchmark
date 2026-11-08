@@ -1,10 +1,5 @@
 # Blood-Brain Barrier (BBB) Permeability Representation Benchmark
 
-[[https://img.shields.io/badge/python-3.11-blue.svg]](https://www.python.org/)
-[[https://img.shields.io/badge/PyTorch-2.0+-ee4c2c.svg]](https://pytorch.org/)
-[[https://img.shields.io/badge/PyG-GNN-3C2179.svg]](https://pyg.org/)
-[[https://img.shields.io/badge/License-MIT-yellow.svg]](https://opensource.org/licenses/MIT)
-
 A rigorous, leak-free benchmarking framework evaluating four distinct molecular representation paradigms on Blood-Brain Barrier (BBB) permeability prediction using the **Therapeutics Data Commons (TDC) `BBB_Martins`** dataset (~2,000 molecules).
 
 ---
