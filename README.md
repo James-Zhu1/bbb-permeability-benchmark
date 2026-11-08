@@ -93,7 +93,7 @@ bbb-permeability-benchmark/
 ### 1. Environment Setup
 ```bash
 # Clone repository
-git clone [https://github.com/](https://github.com/)<your-username>/bbb-permeability-benchmark.git
+git clone https://github.com/James-Zhu1/bbb-permeability-benchmark
 cd bbb-permeability-benchmark
 
 # Create virtual environment (Python 3.11 recommended)
