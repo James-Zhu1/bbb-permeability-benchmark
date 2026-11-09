@@ -13,7 +13,7 @@ A common assumption in AI for drug discovery is that graph neural networks and p
 1. **Morgan fingerprints + Random Forest are the best or tied-best model** (0.924 AUROC on held-out scaffolds). No learned representation beats them on more than 3 of 5 splits under either protocol.
 2. **Frozen ChemBERTa-2 with mean pooling matches end-to-end fine-tuning on scaffold splits** (0.922 vs 0.891) while training 148k parameters instead of 3.4M — but it is 0.020 AUROC *behind* fine-tuning on the TDC protocol, so the two are best described as comparable rather than one dominating.
 3. **`[CLS]` pooling is consistently worse than mean pooling** when the body is frozen (−0.044 scaffold5, −0.029 TDC). Masked-language-model pre-training never trains the `[CLS]` slot to summarize the sequence; fine-tuning is what teaches it to.
-4. **Frozen Boltz-2 trunk features rank last on both protocols** (0.864 / 0.805), losing to the fingerprint baseline on 10 of 10 splits. **Why they transfer poorly is not established here** — see [Open questions](#open-questions) for the candidate explanations and the experiments that would separate them.
+4. **Frozen Boltz-2 trunk features rank last on both protocols** (0.864 / 0.805), losing to the fingerprint baseline on 10 of 10 splits. Linear probes localize the cause: Boltz-2 encodes molecular size as well as ChemBERTa (R² 0.87) but **loses H-bond donor counts (R² 0.518 vs Morgan's 0.813)**, lipophilicity and flexibility — the descriptors passive BBB permeation actually depends on. It clears a two-number size-only baseline by just **+0.024 AUROC** on the TDC protocol. See [Diagnostics](#diagnostics-why-boltz-2-underperforms).
 
 ---
 
@@ -83,7 +83,8 @@ The frozen models share one head (`models/mlp_head.py`: standardize → dropout 
 
 1. **Simplicity is hard to beat at this scale.** With ~1,500 training molecules, Morgan fingerprints remain a top-tier representation. Learned representations have more capacity to fit, but also more capacity to fit the training scaffolds specifically.
 2. **Pooling choice dominates the frozen/fine-tuned distinction.** Swapping `[CLS]` for mean pooling buys +0.044 AUROC — larger than the entire gap between frozen and fine-tuned ChemBERTa. MLM pre-training gives the `[CLS]` slot no sequence-level training signal; fine-tuning is what makes it a usable summary vector.
-3. **A foundation model's pre-training objective matters more than its size.** Boltz-2 is orders of magnitude larger than everything else here and still ranks last. Its training objective (placing atoms in 3D, in a protein's presence) is further from passive membrane permeability than "predict masked SMILES tokens" is.
+3. **A foundation model's pre-training objective matters more than its size.** Boltz-2 is orders of magnitude larger than everything else here and still ranks last. Its objective (placing atoms in 3D, in a protein's presence) is further from passive permeability than "predict masked SMILES tokens" is — and the probe shows this concretely, as a selective loss of H-bond donor and lipophilicity information rather than a general lack of chemical knowledge.
+4. **Diagnose before concluding.** The intuitive explanations for Boltz-2's result — an overfitting head, or features that only encode size — are both testable in minutes and both turned out wrong (logistic regression scores no better; Boltz-2 does clear the size baseline on `scaffold5`). The probe found the actual gap.
 
 ---
 
@@ -100,17 +101,62 @@ Stated plainly, because they bound what the results support:
 
 ---
 
-## Open questions
+## Diagnostics: why Boltz-2 underperforms
 
-Why frozen Boltz-2 features transfer poorly is **untested**. Candidate explanations, with the experiment that would distinguish them:
+Rather than speculate, three controls were run on the same splits. Two candidate explanations are ruled out, and one is supported with a specific mechanism.
+
+### 1. Linear probe — Boltz-2 encodes size, but loses the properties that govern permeation
+
+A linear probe (`RidgeCV`, fit on train, R² on held-out test) asks which physicochemical properties are *linearly recoverable* from each frozen representation. If a property cannot be read out linearly, no small head can use it.
+
+| Property | Morgan | ChemBERTa (mean) | Boltz-2 `s` |
+| :--- | :---: | :---: | :---: |
+| Molecular weight | 0.786 ± 0.061 | 0.879 ± 0.011 | 0.870 ± 0.034 |
+| Heavy-atom count | 0.798 ± 0.057 | 0.882 ± 0.010 | 0.864 ± 0.037 |
+| TPSA | 0.827 ± 0.061 | 0.892 ± 0.035 | 0.829 ± 0.006 |
+| H-bond acceptors | 0.828 ± 0.053 | 0.878 ± 0.032 | 0.826 ± 0.026 |
+| **H-bond donors** | **0.813 ± 0.086** | 0.768 ± 0.096 | **0.518 ± 0.128** |
+| **cLogP** | 0.752 ± 0.079 | **0.842 ± 0.035** | **0.699 ± 0.075** |
+| **Rotatable bonds** | 0.750 ± 0.044 | **0.792 ± 0.033** | **0.563 ± 0.076** |
+
+Boltz-2 matches ChemBERTa on **size and polar surface area** but is far weaker on **H-bond donors (0.518 vs 0.813), lipophilicity and flexibility** — precisely the descriptors that classical CNS-penetration rules are built from. The representation is not uninformative; it is missing the specific information this endpoint needs.
+
+A structural detail is consistent with the H-bond donor gap: the trunk emits **one token per heavy atom** (verified — 19 tokens for propranolol's 19 heavy atoms), so hydrogens are never tokens and donor counts must be inferred rather than read off. Suggestive, not proof.
+
+### 2. The head is not the bottleneck
+
+L2 logistic regression (385 parameters, `C` chosen by CV inside train) on the same vectors scores **at or below** the 148k-parameter MLP head everywhere, so head capacity is not what limits the frozen results:
+
+| Representation | LogReg `scaffold5` | MLP head `scaffold5` | LogReg `tdc` | MLP head `tdc` |
+| :--- | :---: | :---: | :---: | :---: |
+| Morgan | 0.922 ± 0.020 | 0.924 (RF) | 0.863 ± 0.004 | 0.865 (RF) |
+| ChemBERTa (mean) | 0.892 ± 0.047 | 0.922 | 0.834 ± 0.020 | 0.850 |
+| Boltz-2 `s` | 0.843 ± 0.042 | 0.864 | 0.770 ± 0.004 | 0.805 |
+
+### 3. Boltz-2 barely clears a two-number size baseline
+
+A size-only baseline (heavy-atom count + molecular weight, two features) reaches **0.739 ± 0.073** on `scaffold5` and **0.781 ± 0.001** on `tdc`. Against that floor:
+
+- **Morgan** clears it by **+0.183 / +0.082**.
+- **Boltz-2** clears it by **+0.125 / +0.024** — and under logistic regression on `tdc`, Boltz-2's 384 numbers (0.770) score *below* the two-number baseline (0.781).
+
+So on the leaderboard protocol, a 384-dimensional representation from a large structural foundation model carries little BBB-relevant signal beyond molecular size.
+
+### Still untested
+
+Two hypotheses need cluster time and are not settled here:
 
 | Hypothesis | Test |
 | :--- | :--- |
-| No protein context — the trunk always trained with a macromolecular partner present | Re-embed a sample alongside a fixed dummy protein; compare |
-| Mean-pooling over atoms dilutes the signal | Try sum/max pooling, concatenated mean+std, or the pair representation `z` (files already saved) |
-| The pre-training objective encodes the wrong information | Probe whether MW, TPSA and H-bond donor counts are linearly recoverable from the embeddings |
-| The 148k-parameter head overfits 1,500 molecules | Swap in logistic regression on the same vectors |
-| The features mostly encode molecular size | Add a size-only baseline (0.69 AUROC) and see where Boltz-2 sits relative to it |
+| No protein context — the trunk always trained with a macromolecular partner present | Re-embed a sample alongside a fixed dummy protein and compare |
+| Mean-pooling over atoms destroys count-like information (e.g. donor counts) | Sum/max pooling, concatenated mean+std, or the pair representation `z` (the per-atom files are retained on the cluster) |
+
+Reproduce the diagnostics:
+
+```bash
+python scripts/probe_embeddings.py                  # linear probe (~10 min)
+python scripts/diagnose_heads.py --protocol tdc     # logistic regression + size baseline
+```
 
 ---
 

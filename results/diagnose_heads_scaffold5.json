@@ -1,0 +1,248 @@
+{
+  "description": "Controls for the frozen-representation results: L2 logistic regression (C by CV inside train) on the same vectors as the MLP head, plus a size-only baseline (heavy atoms + MolWt).",
+  "protocol": "scaffold5",
+  "Cs_searched": [
+    0.001,
+    0.01,
+    0.1,
+    1.0,
+    10.0,
+    100.0,
+    1000.0
+  ],
+  "dataset_fingerprint": "4481f9a42e1cc610",
+  "results": {
+    "Size only (2 features)": {
+      "per_split": [
+        {
+          "split": 0,
+          "test": {
+            "auroc": 0.6656233698487221,
+            "auprc": 0.7915791591806589,
+            "auprc_random": 0.7244897959183674
+          }
+        },
+        {
+          "split": 1,
+          "test": {
+            "auroc": 0.8081638755980861,
+            "auprc": 0.9329737927847854,
+            "auprc_random": 0.7755102040816326
+          }
+        },
+        {
+          "split": 2,
+          "test": {
+            "auroc": 0.7302102659245517,
+            "auprc": 0.8874136128265073,
+            "auprc_random": 0.7857142857142857
+          }
+        },
+        {
+          "split": 3,
+          "test": {
+            "auroc": 0.8197973066777732,
+            "auprc": 0.9248618761575541,
+            "auprc_random": 0.75
+          }
+        },
+        {
+          "split": 4,
+          "test": {
+            "auroc": 0.6705426356589147,
+            "auprc": 0.8675111870032695,
+            "auprc_random": 0.7806122448979592
+          }
+        }
+      ],
+      "summary": {
+        "auroc": {
+          "mean": 0.7388674907416095,
+          "std": 0.07324540714374946
+        },
+        "auprc": {
+          "mean": 0.880867925590555,
+          "std": 0.056666174603186605
+        },
+        "auprc_random": {
+          "mean": 0.763265306122449,
+          "std": 0.02566280885705977
+        }
+      }
+    },
+    "Morgan (2048 bits)": {
+      "per_split": [
+        {
+          "split": 0,
+          "test": {
+            "auroc": 0.9054512258737611,
+            "auprc": 0.9556464374693163,
+            "auprc_random": 0.7244897959183674
+          }
+        },
+        {
+          "split": 1,
+          "test": {
+            "auroc": 0.9534988038277512,
+            "auprc": 0.9852328160070674,
+            "auprc_random": 0.7755102040816326
+          }
+        },
+        {
+          "split": 2,
+          "test": {
+            "auroc": 0.9201453308596166,
+            "auprc": 0.978825994640645,
+            "auprc_random": 0.7857142857142857
+          }
+        },
+        {
+          "split": 3,
+          "test": {
+            "auroc": 0.9272525336665278,
+            "auprc": 0.9729324574009611,
+            "auprc_random": 0.75
+          }
+        },
+        {
+          "split": 4,
+          "test": {
+            "auroc": 0.9053047575619396,
+            "auprc": 0.967125679237265,
+            "auprc_random": 0.7806122448979592
+          }
+        }
+      ],
+      "summary": {
+        "auroc": {
+          "mean": 0.9223305303579193,
+          "std": 0.0198447117872546
+        },
+        "auprc": {
+          "mean": 0.971952676951051,
+          "std": 0.011333114224517252
+        },
+        "auprc_random": {
+          "mean": 0.763265306122449,
+          "std": 0.02566280885705977
+        }
+      }
+    },
+    "ChemBERTa frozen (mean)": {
+      "per_split": [
+        {
+          "split": 0,
+          "test": {
+            "auroc": 0.8878455920709443,
+            "auprc": 0.9416071217454908,
+            "auprc_random": 0.7244897959183674
+          }
+        },
+        {
+          "split": 1,
+          "test": {
+            "auroc": 0.9694976076555023,
+            "auprc": 0.9915161094021637,
+            "auprc_random": 0.7755102040816326
+          }
+        },
+        {
+          "split": 2,
+          "test": {
+            "auroc": 0.8412956091527521,
+            "auprc": 0.9444925243882066,
+            "auprc_random": 0.7857142857142857
+          }
+        },
+        {
+          "split": 3,
+          "test": {
+            "auroc": 0.8792169929196169,
+            "auprc": 0.9454342284901378,
+            "auprc_random": 0.75
+          }
+        },
+        {
+          "split": 4,
+          "test": {
+            "auroc": 0.8822009423924609,
+            "auprc": 0.9516893744367784,
+            "auprc_random": 0.7806122448979592
+          }
+        }
+      ],
+      "summary": {
+        "auroc": {
+          "mean": 0.8920113488382553,
+          "std": 0.04704651874684775
+        },
+        "auprc": {
+          "mean": 0.9549478716925555,
+          "std": 0.02077049058724836
+        },
+        "auprc_random": {
+          "mean": 0.763265306122449,
+          "std": 0.02566280885705977
+        }
+      }
+    },
+    "Boltz-2 frozen (s, mean)": {
+      "per_split": [
+        {
+          "split": 0,
+          "test": {
+            "auroc": 0.8231611893583725,
+            "auprc": 0.896148753356292,
+            "auprc_random": 0.7244897959183674
+          }
+        },
+        {
+          "split": 1,
+          "test": {
+            "auroc": 0.8909988038277511,
+            "auprc": 0.9632712083905924,
+            "auprc_random": 0.7755102040816326
+          }
+        },
+        {
+          "split": 2,
+          "test": {
+            "auroc": 0.793908472479901,
+            "auprc": 0.9284506545251245,
+            "auprc_random": 0.7857142857142857
+          }
+        },
+        {
+          "split": 3,
+          "test": {
+            "auroc": 0.8828266000277663,
+            "auprc": 0.9434545512576363,
+            "auprc_random": 0.75
+          }
+        },
+        {
+          "split": 4,
+          "test": {
+            "auroc": 0.8261133910928713,
+            "auprc": 0.9319061108975806,
+            "auprc_random": 0.7806122448979592
+          }
+        }
+      ],
+      "summary": {
+        "auroc": {
+          "mean": 0.8434016913573323,
+          "std": 0.041767063881864894
+        },
+        "auprc": {
+          "mean": 0.9326462556854451,
+          "std": 0.0245200200909297
+        },
+        "auprc_random": {
+          "mean": 0.763265306122449,
+          "std": 0.02566280885705977
+        }
+      }
+    }
+  }
+}

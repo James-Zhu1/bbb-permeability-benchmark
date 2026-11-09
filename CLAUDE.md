@@ -143,3 +143,21 @@ bbb-permeability-benchmark/
       models (decision A).
       RESULT: scaffold5 0.864 ± 0.041, tdc 0.805 ± 0.008 (TDC evaluator) — lowest of
       all models; loses to Morgan+RF on 10/10 splits.
+- [x] Step 4b: DIAGNOSTICS for the Boltz-2 result (Mac, scaffold5 + tdc).
+      scripts/probe_embeddings.py (RidgeCV probe, frozen rep -> RDKit properties,
+      R^2 on test) and scripts/diagnose_heads.py (LogisticRegressionCV on the same
+      vectors + size-only baseline). load_vectors/impute_from_train moved into
+      src/bbb/featurizers/boltz_embed.py (was duplicated in a script; refactor
+      verified result-neutral).
+      FINDINGS: (a) Boltz-2 encodes size (MolWt R^2 0.870) and TPSA (0.829) ~as well
+      as ChemBERTa, but loses H-bond DONORS (0.518 vs Morgan 0.813), cLogP (0.699)
+      and rotatable bonds (0.563) — the descriptors BBB permeation depends on.
+      Consistent with s having one token per HEAVY atom (no H tokens). (b) Head is
+      NOT the bottleneck: logreg <= MLP head for every rep on both protocols.
+      (c) Size-only baseline (heavy atoms + MolWt) = 0.739 scaffold5 / 0.781 tdc;
+      Boltz beats it by only +0.125/+0.024, and logreg-on-Boltz (0.770) is BELOW it
+      on tdc. Still untested: protein context, alternative pooling / pair rep z.
+- [x] README.md: recruiter-facing write-up with results, head-to-head win counts,
+      leaderboard context, caveats, diagnostics. Keep claims tied to measurements —
+      an earlier draft asserted an untested mechanism ("conformational noise") and
+      a wrong param count; both corrected.

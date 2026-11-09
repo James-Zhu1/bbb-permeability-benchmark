@@ -22,35 +22,13 @@ import json
 from dataclasses import asdict
 
 import numpy as np
-import pandas as pd
 import torch
 
 from bbb.data import REPO_ROOT, dataset_fingerprint, tdc_group
+from bbb.featurizers.boltz_embed import impute_from_train, load_vectors
 from bbb.metrics import compute_metrics, summarize
 from bbb.models.mlp_head import HeadConfig, predict_proba, train_head
 from bbb.splits import N_SPLITS, PROTOCOLS, load_protocol, load_split
-
-FULL = REPO_ROOT / "data" / "boltz" / "full"
-
-
-def load_vectors(df: pd.DataFrame, protocol: str) -> tuple[np.ndarray, np.ndarray]:
-    """Row-aligned (n_rows, 384) matrix (NaN where Boltz failed) + missing mask."""
-    index = pd.read_csv(FULL / f"index_{protocol}.csv")
-    # Guard: the exporter's rows must be exactly load_protocol()'s rows.
-    if len(index) != len(df) or not (index["smiles"].values == df["smiles"].values).all():
-        raise ValueError(f"index_{protocol}.csv does not match the dataset; re-run the exporter")
-
-    pooled = np.load(FULL / "s_mean.npz")
-    row_of = {m: i for i, m in enumerate(pooled["mol_ids"])}
-    X = np.full((len(df), pooled["X"].shape[1]), np.nan, dtype=np.float32)
-    missing = np.zeros(len(df), dtype=bool)
-    for r, mid in enumerate(index["mol_id"]):
-        if mid in row_of:
-            X[r] = pooled["X"][row_of[mid]]
-        else:
-            missing[r] = True
-    return X, missing
-
 
 def main() -> None:
     parser = argparse.ArgumentParser()
@@ -74,8 +52,7 @@ def main() -> None:
         tr, va, te = idx["train"], idx["valid"], idx["test"]
 
         # Impute missing rows with THIS split's training mean (no valid/test info).
-        X = X_all.copy()
-        X[missing] = X_all[tr][~missing[tr]].mean(axis=0)
+        X = impute_from_train(X_all, missing, tr)
         where = {name: np.flatnonzero(missing[s]).size for name, s in (("train", tr), ("valid", va), ("test", te))}
 
         model, history = train_head(X[tr], y[tr], X[va], y[va], seed=i, cfg=cfg)
@@ -118,7 +95,6 @@ def main() -> None:
     out = REPO_ROOT / "results" / f"boltz_frozen_{args.protocol}.json"
     out.write_text(json.dumps(result, indent=2))
     print(f"saved {out.relative_to(REPO_ROOT)}")
-
 
 if __name__ == "__main__":
     main()
