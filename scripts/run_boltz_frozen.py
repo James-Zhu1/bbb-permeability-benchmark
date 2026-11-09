@@ -94,7 +94,7 @@ def main() -> None:
         print(f"TDC official evaluator: AUROC {tdc_mean:.3f} ± {tdc_std:.3f}  (leaderboard format)")
         result["tdc_official"] = {"auroc_mean": tdc_mean, "auroc_std": tdc_std}
 
-    out = REPO_ROOT / "results" / f"boltz_frozen_{args.protocol}.json"
+    out = REPO_ROOT / "results" / f"boltz_frozen_{args.pooling}_{args.protocol}.json"
     out.write_text(json.dumps(result, indent=2))
     print(f"saved {out.relative_to(REPO_ROOT)}")
 
