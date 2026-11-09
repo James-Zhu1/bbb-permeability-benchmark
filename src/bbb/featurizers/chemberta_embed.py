@@ -11,6 +11,12 @@ into one row:
         frozen, it may carry little information.
   mean  average every real token's row (padding excluded) -- the standard
         way to get a molecule vector from a frozen RoBERTa-style model.
+  sum   add every real token's row instead of averaging. A mean divides by
+        token count, so count-like properties ("how many N-H groups") survive
+        only as fractions; a sum keeps magnitude. Used to test whether mean
+        pooling is what loses H-bond donor counts (see scripts/probe_embeddings.py).
+  max   per-dimension maximum over real tokens: "is there any token that
+        strongly activates this feature", regardless of molecule size.
 """
 
 from __future__ import annotations
@@ -21,7 +27,7 @@ from transformers import AutoModel
 
 from bbb.models.chemberta import MODEL_NAME, MODEL_REVISION, load_tokenizer
 
-POOLINGS = ("cls", "mean")
+POOLINGS = ("cls", "mean", "sum", "max")
 
 
 @torch.no_grad()
@@ -40,13 +46,16 @@ def chemberta_embeddings(smiles: list[str], pooling: str, batch_size: int = 64) 
                         truncation=True, max_length=512, return_tensors="pt")
         table = body(**enc).last_hidden_state          # [batch, tokens, 384]
 
+        # attention_mask is 1 for real tokens, 0 for padding.
+        mask = enc["attention_mask"].unsqueeze(-1).float()       # [batch, tokens, 1]
         if pooling == "cls":
-            vec = table[:, 0, :]                        # row 0 = [CLS]
-        else:
-            # attention_mask is 1 for real tokens, 0 for padding. Zero out the
-            # padding rows, then divide by the number of real tokens.
-            mask = enc["attention_mask"].unsqueeze(-1).float()   # [batch, tokens, 1]
+            vec = table[:, 0, :]                                 # row 0 = [CLS]
+        elif pooling == "mean":
             vec = (table * mask).sum(dim=1) / mask.sum(dim=1)
+        elif pooling == "sum":
+            vec = (table * mask).sum(dim=1)
+        else:  # max: push padding to -inf so it can never win the maximum
+            vec = table.masked_fill(mask == 0, float("-inf")).max(dim=1).values
 
         out.append(vec.numpy().astype(np.float32))
     return np.concatenate(out)

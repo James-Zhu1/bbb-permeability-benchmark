@@ -12,7 +12,7 @@ A common assumption in AI for drug discovery is that graph neural networks and p
 
 1. **Morgan fingerprints + Random Forest are the best or tied-best model** (0.924 AUROC on held-out scaffolds). No learned representation beats them on more than 3 of 5 splits under either protocol.
 2. **Frozen ChemBERTa-2 with mean pooling matches end-to-end fine-tuning on scaffold splits** (0.922 vs 0.891) while training 148k parameters instead of 3.4M — but it is 0.020 AUROC *behind* fine-tuning on the TDC protocol, so the two are best described as comparable rather than one dominating.
-3. **`[CLS]` pooling is consistently worse than mean pooling** when the body is frozen (−0.044 scaffold5, −0.029 TDC). Masked-language-model pre-training never trains the `[CLS]` slot to summarize the sequence; fine-tuning is what teaches it to.
+3. **How you pool a frozen transformer matters as much as which model you use.** Across `[CLS]`/mean/sum/max, test AUROC spans 0.821–0.882 on TDC — wider than the gap between model families. `[CLS]` is reliably last (MLM pre-training never trains that slot to summarize a sequence; fine-tuning is what teaches it to). Which of the other three is best is **not reliably selectable**: validation ranks them differently from test on both protocols, which is the empirical case for this project's no-tuning rule.
 4. **Frozen Boltz-2 trunk features rank last on both protocols** (0.864 / 0.805), losing to the fingerprint baseline on 10 of 10 splits. Linear probes localize the cause: Boltz-2 encodes molecular size as well as ChemBERTa (R² 0.87) but **loses H-bond donor counts (R² 0.518 vs Morgan's 0.813)**, lipophilicity and flexibility — the descriptors passive BBB permeation actually depends on. It clears a two-number size-only baseline by just **+0.024 AUROC** on the TDC protocol. See [Diagnostics](#diagnostics-why-boltz-2-underperforms).
 
 ---
@@ -28,13 +28,17 @@ Two evaluation protocols, each with 5 committed splits that every model loads un
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: |
 | **Morgan ECFP4 (r=2, 2048-bit) + RF** | Classical descriptors | 500 trees | **0.924 ± 0.024** | **0.971 ± 0.013** | 0.865 ± 0.005 | 0.954 ± 0.003 |
 | **ChemBERTa-2, frozen + mean pool** | Pre-trained transformer | 148k head | 0.922 ± 0.036 | 0.968 ± 0.016 | 0.850 ± 0.011 | 0.947 ± 0.005 |
+| **ChemBERTa-2, frozen + sum pool** † | Pre-trained transformer | 148k head | 0.912 ± 0.045 | 0.962 ± 0.021 | 0.879 ± 0.011 | 0.957 ± 0.004 |
+| **ChemBERTa-2, frozen + max pool** † | Pre-trained transformer | 148k head | 0.908 ± 0.051 | 0.965 ± 0.019 | **0.882 ± 0.011** | **0.963 ± 0.004** |
 | **GINE GNN, from scratch** | 2D molecular graph | 33k (all) | 0.900 ± 0.048 | 0.960 ± 0.021 | 0.847 ± 0.034 | 0.952 ± 0.013 |
-| **ChemBERTa-2, fine-tuned** | Pre-trained transformer | 3.4M (all) | 0.891 ± 0.052 | 0.950 ± 0.040 | **0.870 ± 0.020** | **0.958 ± 0.008** |
+| **ChemBERTa-2, fine-tuned** | Pre-trained transformer | 3.4M (all) | 0.891 ± 0.052 | 0.950 ± 0.040 | 0.870 ± 0.020 | 0.958 ± 0.008 |
 | **ChemBERTa-2, frozen + `[CLS]`** | Pre-trained transformer | 148k head | 0.878 ± 0.027 | 0.951 ± 0.022 | 0.821 ± 0.012 | 0.942 ± 0.005 |
 | **Boltz-2 trunk `s`, frozen + mean pool** | 3D co-folding foundation model | 148k head | 0.864 ± 0.041 | 0.944 ± 0.019 | 0.805 ± 0.008 | 0.930 ± 0.004 |
 | *Random baseline* | — | — | *0.500* | *0.763* | *0.500* | *0.808* |
 
 All models use default, untuned hyperparameters. AUPRC is reported against the positive-class rate (the *random* AUPRC column above), not against 0.5.
+
+† **The sum/max rows are diagnostics, not a claimed win.** They were added after the fact to test a mechanism (see [Diagnostics §4](#4-pooling-choice-matters-but-validation-cannot-pick-it)), and **validation AUROC does not rank the pooling choices in the same order as test AUROC on either protocol** — an honest protocol that selected pooling on validation would have picked a *worse* option both times. Max pooling's 0.882 on `tdc` is reported for transparency, not as a result to cite.
 
 **Head-to-head vs. the fingerprint baseline**, counting per-split wins on the same test sets:
 
@@ -82,9 +86,10 @@ The frozen models share one head (`models/mlp_head.py`: standardize → dropout 
 ## Key findings
 
 1. **Simplicity is hard to beat at this scale.** With ~1,500 training molecules, Morgan fingerprints remain a top-tier representation. Learned representations have more capacity to fit, but also more capacity to fit the training scaffolds specifically.
-2. **Pooling choice dominates the frozen/fine-tuned distinction.** Swapping `[CLS]` for mean pooling buys +0.044 AUROC — larger than the entire gap between frozen and fine-tuned ChemBERTa. MLM pre-training gives the `[CLS]` slot no sequence-level training signal; fine-tuning is what makes it a usable summary vector.
+2. **Pooling choice dominates the frozen/fine-tuned distinction.** Swapping `[CLS]` for mean pooling buys +0.044 AUROC — larger than the entire gap between frozen and fine-tuned ChemBERTa, and the full `[CLS]`→max span on TDC is +0.061. MLM pre-training gives the `[CLS]` slot no sequence-level training signal; fine-tuning is what makes it a usable summary vector. A cheap representation decision outweighed an expensive training decision here.
 3. **A foundation model's pre-training objective matters more than its size.** Boltz-2 is orders of magnitude larger than everything else here and still ranks last. Its objective (placing atoms in 3D, in a protein's presence) is further from passive permeability than "predict masked SMILES tokens" is — and the probe shows this concretely, as a selective loss of H-bond donor and lipophilicity information rather than a general lack of chemical knowledge.
-4. **Diagnose before concluding.** The intuitive explanations for Boltz-2's result — an overfitting head, or features that only encode size — are both testable in minutes and both turned out wrong (logistic regression scores no better; Boltz-2 does clear the size baseline on `scaffold5`). The probe found the actual gap.
+4. **Diagnose before concluding.** The intuitive explanations for Boltz-2's result — an overfitting head, or features that only encode size — are both testable in minutes and both turned out wrong (logistic regression scores no better; Boltz-2 does clear the size baseline on `scaffold5`). The probe found the actual gap, and a pooling control confirmed the mechanism behind it.
+5. **At ~2,000 molecules, a held-out set of ~200 cannot adjudicate small differences.** Validation picked the wrong pooling on both protocols. Reporting a spread with its selection caveat is more useful than naming a winner that would not survive an honest protocol.
 
 ---
 
@@ -97,6 +102,7 @@ Stated plainly, because they bound what the results support:
 - **Boltz-2 saw salt-stripped SMILES** (largest fragment), affecting 168 raw TDC rows; the other models saw TDC's raw SMILES. Recorded in the results JSON.
 - **Frozen-model inputs are standardized** with training-set statistics, because Boltz-2's activations are ~70× ChemBERTa's scale (values to ~950) and would otherwise saturate `tanh`. Applied to *all* frozen models for parity; the frozen-ChemBERTa numbers here are from that re-run.
 - **Hardware.** Boltz-2 embeddings were computed on an NVIDIA L40S (Slurm cluster); **all model training and scoring ran on one machine**, so the scores are mutually comparable. Re-running on different hardware shifts third-decimal digits (verified: identical test AUROCs, ±0.001 on some valid/AUPRC values).
+- **The sum/max pooling runs are post-hoc diagnostics.** They were added while investigating the Boltz-2 result, not planned up front, and validation does not select among poolings reliably (see Diagnostics §4). They are reported in full rather than cherry-picked, and the headline comparison does not rest on them.
 - **Trained weights are not checkpointed.** Runs are seeded and reproducible, but no model is saved for inference on new molecules.
 
 ---
@@ -142,20 +148,44 @@ A size-only baseline (heavy-atom count + molecular weight, two features) reaches
 
 So on the leaderboard protocol, a 384-dimensional representation from a large structural foundation model carries little BBB-relevant signal beyond molecular size.
 
+### 4. Pooling choice matters, but validation cannot pick it
+
+The H-bond donor gap suggests a mechanism: a **mean** divides by token count, so extensive ("how many") properties survive only as fractions, while a **sum** keeps magnitude. Testing that on ChemBERTa, where per-token vectors are available locally, confirms it — sum pooling improves recovery of every count-like property:
+
+| Property | ChemBERTa (mean) | ChemBERTa (sum) |
+| :--- | :---: | :---: |
+| H-bond donors | 0.768 ± 0.096 | **0.896 ± 0.046** |
+| Heavy-atom count | 0.882 ± 0.010 | **0.996 ± 0.001** |
+| Molecular weight | 0.879 ± 0.011 | **0.985 ± 0.001** |
+| Rotatable bonds | 0.792 ± 0.033 | **0.893 ± 0.019** |
+
+Part of this is near-trivial — the norm of a sum scales with token count, so size is almost readable off the magnitude — but the donor-count gain exceeds what size alone explains. **This predicts that sum-pooling Boltz-2's per-atom `s` would recover more of the missing properties**, which is the next experiment to run.
+
+Downstream, pooling moves BBB AUROC as much as the model family does (`tdc`: `[CLS]` 0.821 → mean 0.850 → sum 0.879 → max 0.882). **But the choice cannot be made honestly here.** Validation and test disagree on the ranking:
+
+| Protocol | Validation ranking (what you could legitimately select on) | Test ranking (ground truth) |
+| :--- | :--- | :--- |
+| `scaffold5` | **sum** 0.925 > max 0.920 > mean 0.917 > cls 0.888 | **mean** 0.922 > sum 0.912 > max 0.908 > cls 0.878 |
+| `tdc` | **mean** 0.939 ≈ sum 0.939 > max 0.925 > cls 0.922 | **max** 0.882 > sum 0.879 > mean 0.850 > cls 0.821 |
+
+Selecting on validation picks `sum` on `scaffold5` (test 0.912, worse than mean's 0.922) and `mean` on `tdc` (test 0.850, the worst of the three non-`[CLS]` options). With ~200 validation molecules, differences of 0.01–0.03 are not resolvable — which is the empirical justification for this project's no-tuning rule. The reportable finding is the **spread** (0.821–0.882 on `tdc`), not a winner.
+
+The one robust conclusion survives: **`[CLS]` is last on both protocols, by both validation and test.**
+
 ### Still untested
 
-Two hypotheses need cluster time and are not settled here:
-
-| Hypothesis | Test |
-| :--- | :--- |
-| No protein context — the trunk always trained with a macromolecular partner present | Re-embed a sample alongside a fixed dummy protein and compare |
-| Mean-pooling over atoms destroys count-like information (e.g. donor counts) | Sum/max pooling, concatenated mean+std, or the pair representation `z` (the per-atom files are retained on the cluster) |
+| Hypothesis | Test | Status |
+| :--- | :--- | :--- |
+| Mean pooling destroys count-like information | Sum/max pooling | **Confirmed on ChemBERTa** (above); Boltz-2 re-pooling pending — needs the per-atom files on the cluster |
+| No protein context — the trunk always trained with a macromolecular partner present | Re-embed alongside a fixed dummy protein and compare | Not run — needs GPU time |
+| The pair representation `z` carries what `s` loses | Pool `z` and probe it | Not run — needs the per-atom files |
 
 Reproduce the diagnostics:
 
 ```bash
-python scripts/probe_embeddings.py                  # linear probe (~10 min)
-python scripts/diagnose_heads.py --protocol tdc     # logistic regression + size baseline
+python scripts/probe_embeddings.py                       # linear probe (~15 min)
+python scripts/diagnose_heads.py --protocol tdc          # logistic regression + size baseline
+python scripts/run_chemberta_frozen.py --pooling sum     # also: cls, mean, max
 ```
 
 ---
@@ -182,6 +212,12 @@ bbb-permeability-benchmark/
 ├── slurm/                     # HPC job scripts (L40S GPU cluster)
 └── results/                   # Per-split metrics as {model}_{protocol}.json
 ```
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE).
 
 ---
 

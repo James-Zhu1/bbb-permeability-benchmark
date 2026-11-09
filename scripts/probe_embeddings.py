@@ -69,13 +69,18 @@ def main() -> None:
     boltz, missing = load_vectors(df, "scaffold5")
     reps = {
         "Morgan (2048 bits)": morgan_fingerprints(smiles).astype(np.float32),
-        "ChemBERTa frozen (mean)": chemberta_embeddings(smiles, pooling="mean"),
-        "Boltz-2 frozen (s, mean)": boltz,
+        "ChemBERTa (mean)": chemberta_embeddings(smiles, pooling="mean"),
+        # Pooling control: a mean divides by token count, so count-like
+        # properties survive only as fractions; a sum keeps magnitude. If the
+        # Boltz-2 H-bond-donor gap is caused by mean pooling rather than by the
+        # representation, sum pooling should recover counts better here too.
+        "ChemBERTa (sum)": chemberta_embeddings(smiles, pooling="sum"),
+        "Boltz-2 s (mean)": boltz,
     }
 
     results: dict[str, dict[str, dict[str, float]]] = {}
     print(f"Linear probe: R^2 on held-out scaffold5 test molecules, mean ± std over {N_SPLITS} splits\n")
-    header = f"{'property':<16}" + "".join(f"{name:>26}" for name in reps)
+    header = f"{'property':<16}" + "".join(f"{name:>22}" for name in reps)
     print(header)
     print("-" * len(header))
 
@@ -100,7 +105,7 @@ def main() -> None:
                 "r2_mean": float(np.mean(scores)),
                 "r2_std": float(np.std(scores, ddof=1)),
             }
-            row += f"{np.mean(scores):>19.3f} ± {np.std(scores, ddof=1):.3f}"
+            row += f"{np.mean(scores):>15.3f} ± {np.std(scores, ddof=1):.3f}"
         print(row)
 
     out = REPO_ROOT / "results" / "probe_scaffold5.json"

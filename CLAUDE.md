@@ -156,7 +156,19 @@ bbb-permeability-benchmark/
       NOT the bottleneck: logreg <= MLP head for every rep on both protocols.
       (c) Size-only baseline (heavy atoms + MolWt) = 0.739 scaffold5 / 0.781 tdc;
       Boltz beats it by only +0.125/+0.024, and logreg-on-Boltz (0.770) is BELOW it
-      on tdc. Still untested: protein context, alternative pooling / pair rep z.
+      on tdc.
+      (d) POOLING MECHANISM CONFIRMED on ChemBERTa (added sum/max to
+      featurizers/chemberta_embed.py): sum pooling lifts every count-like property
+      (HBD 0.768 -> 0.896, heavy atoms 0.882 -> 0.996, MolWt 0.879 -> 0.985) because a
+      mean divides by token count. Predicts sum-pooling Boltz s would recover more.
+      (e) CAUTION — pooling moves tdc test AUROC 0.821/0.850/0.879/0.882 (cls/mean/
+      sum/max), i.e. max BEATS Morgan+RF 0.865 — but VALID RANKS DIFFERENTLY from
+      test on BOTH protocols (scaffold5 valid picks sum -> test 0.912 < mean 0.922;
+      tdc valid picks mean -> test 0.850, worst of three). ~200 valid molecules cannot
+      resolve 0.01-0.03. Do NOT cite max 0.882 as a win; report the spread + the
+      selection caveat. Only robust claim: [CLS] is last by valid AND test.
+      Still untested (needs Hopper, unreachable 2026-11-09): Boltz re-pooling,
+      protein context, pair rep z.
 - [x] README.md: recruiter-facing write-up with results, head-to-head win counts,
       leaderboard context, caveats, diagnostics. Keep claims tied to measurements —
       an earlier draft asserted an untested mechanism ("conformational noise") and
