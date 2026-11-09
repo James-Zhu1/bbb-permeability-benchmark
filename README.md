@@ -201,6 +201,8 @@ Both predictions hold, and they dissociate cleanly:
 - **Rotatable bonds**, a bond property needing no hydrogens → **absent from `s`, present in `z`** (0.565 → 0.912, beating Morgan's 0.750).
 - **H-bond donors**, which require knowing where hydrogens sit → **absent from both** (0.554, 0.635 ± 0.247), as predicted by heavy-atom-only tokenization.
 
+The donor half is confirmed in Boltz's source rather than only inferred: the parser skips hydrogens outright (`if atom.GetAtomicNum() == 1: continue`), and its per-atom features are element, charge, chirality, atom name and reference coordinates — **no hydrogen count appears anywhere in the codebase**. Morgan's atom invariants include it explicitly, and ChemBERTa can read it off SMILES; Boltz can only infer it indirectly from conformer geometry, which is what a weak-but-nonzero R² looks like.
+
 Downstream, `z` lifts Boltz-2 to **0.910 ± 0.025** (`scaffold5`) and **0.842 ± 0.019** (`tdc`) — from last place to mid-pack, ahead of the from-scratch GNN and fine-tuned ChemBERTa on `scaffold5`. Concatenating `s` with `z` is no better than `z` alone (0.894 / 0.840).
 
 **This selection is honest.** Unlike the ChemBERTa pooling sweep below, validation ranks the five Boltz-2 variants in *exactly* the test order, independently on both protocols (`zsum` > `sum+zsum` > `sum` > `mean` > `max`). The effect (+0.046) is large enough for ~200 validation molecules to resolve; the ChemBERTa pooling differences (0.01–0.03) are not.
@@ -222,7 +224,7 @@ The one robust conclusion survives: **`[CLS]` is last on both protocols, by both
 | :--- | :--- | :--- |
 | Mean pooling destroys count-like information | Sum/max pooling, probed and run end-to-end | **Confirmed on ChemBERTa, falsified for Boltz-2's deficit** — sum pooling recovers size perfectly but not donors or rotatable bonds |
 | The pair representation `z` carries what `s` loses | Pool `z` and probe the same properties | **Confirmed** — rotatable bonds 0.565 → 0.912, BBB AUROC 0.864 → 0.910 |
-| H-bond donors are unrecoverable because hydrogens are never tokens | Probe donors in both `s` and `z` | **Consistent** — absent from both (0.554, 0.635). Not proof; a run with explicit hydrogens would settle it |
+| H-bond donors are unrecoverable because hydrogens are never represented | Probe donors in both `s` and `z`; inspect Boltz's atom featurization | **Confirmed at source level** — absent from both (0.554, 0.635), and Boltz's parser skips hydrogens (`if atom.GetAtomicNum() == 1: continue`) while its atom features are element, charge, chirality, name and coordinates only. No hydrogen-count accessor appears anywhere in the codebase, so donor counts are inferable only indirectly, from reference-conformer geometry |
 | No protein context — the trunk always trained with a macromolecular partner present | Re-embed alongside a fixed dummy protein and compare | **Not run** — needs GPU time and a choice of protein |
 
 Reproduce the diagnostics:

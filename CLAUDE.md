@@ -190,8 +190,14 @@ bbb-permeability-benchmark/
       EXACTLY test order on BOTH protocols (zsum > sum+zsum > sum > mean > max).
       Contrast with (e): the +0.046 effect is resolvable by ~200 valid molecules, the
       ChemBERTa pooling gaps (0.01-0.03) are not.
-      Still untested: protein context (needs GPU + choice of protein); explicit-H run
-      would settle the donor explanation.
+      (h) DONOR EXPLANATION PROVEN AT SOURCE LEVEL (no GPU needed): boltz/data/parse/
+      schema.py skips H outright (`if atom.GetAtomicNum() == 1: continue`) and
+      featurizerv2.py's atom_features = ref_pos/element/charge/chirality/name_chars/
+      backbone/space_uid — grep for GetTotalNumHs|GetNumImplicitHs|GetNumExplicitHs in
+      the whole boltz package returns 0 hits. So donors are inferable only indirectly
+      from conformer geometry. An 'explicit-H run' is NOT possible without patching the
+      parser, and would be out-of-distribution for the trained weights anyway.
+      Only remaining untested item: protein context (needs GPU + choice of protein).
 - [x] Boltz-2 = 521.0M params (boltz2_conf; boltz2_aff 529.4M, unused), measured
       from the checkpoint on Hopper. Earlier "~400M" in the README was a guess, now fixed.
 - [x] README.md: recruiter-facing write-up with results, head-to-head win counts,
