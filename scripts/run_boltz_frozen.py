@@ -25,7 +25,7 @@ import numpy as np
 import torch
 
 from bbb.data import REPO_ROOT, dataset_fingerprint, tdc_group
-from bbb.featurizers.boltz_embed import impute_from_train, load_vectors
+from bbb.featurizers.boltz_embed import POOLINGS, impute_from_train, load_vectors
 from bbb.metrics import compute_metrics, summarize
 from bbb.models.mlp_head import HeadConfig, predict_proba, train_head
 from bbb.splits import N_SPLITS, PROTOCOLS, load_protocol, load_split
@@ -33,6 +33,7 @@ from bbb.splits import N_SPLITS, PROTOCOLS, load_protocol, load_split
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--protocol", choices=PROTOCOLS, default="scaffold5")
+    parser.add_argument("--pooling", choices=POOLINGS, default="mean")
     args = parser.parse_args()
 
     torch.set_num_threads(4)
@@ -40,10 +41,10 @@ def main() -> None:
 
     df, splits_dir = load_protocol(args.protocol)
     y = df["label"].to_numpy()
-    X_all, missing = load_vectors(df, args.protocol)
+    X_all, missing = load_vectors(df, args.protocol, pooling=args.pooling)
 
     per_split, test_preds = [], []
-    print(f"[{args.protocol}] frozen Boltz-2 (s, mean over atoms), vectors {X_all.shape}, "
+    print(f"[{args.protocol}] frozen Boltz-2 (s, {args.pooling} over atoms), vectors {X_all.shape}, "
           f"rows without embedding: {np.flatnonzero(missing).tolist()}")
     print(f"{'split':>5} | {'best epoch':>10} | {'valid AUROC':>11} | {'test AUROC':>10} | "
           f"{'test AUPRC':>10} | imputed")
@@ -74,7 +75,8 @@ def main() -> None:
           f"(random AUPRC {t['auprc_random']['mean']:.3f})")
 
     result = {
-        "model": "frozen Boltz-2 (boltz 2.2.1, boltz2_conf) trunk s, mean over atoms + MLP head",
+        "model": f"frozen Boltz-2 (boltz 2.2.1, boltz2_conf) trunk s, {args.pooling} over atoms + MLP head",
+        "pooling": args.pooling,
         "protocol": args.protocol,
         "boltz_settings": "ligand-only input, largest fragment, --sampling_steps 10 "
                           "--diffusion_samples 1 --seed 0 (s is pre-diffusion; verified identical to 200 steps)",

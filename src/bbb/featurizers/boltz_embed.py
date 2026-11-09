@@ -19,19 +19,27 @@ from bbb.data import REPO_ROOT
 FULL = REPO_ROOT / "data" / "boltz" / "full"
 
 
-def load_vectors(df: pd.DataFrame, protocol: str) -> tuple[np.ndarray, np.ndarray]:
+POOLINGS = ("mean", "sum", "max")
+
+
+def load_vectors(
+    df: pd.DataFrame, protocol: str, pooling: str = "mean"
+) -> tuple[np.ndarray, np.ndarray]:
     """Return (n_rows, 384) vectors (NaN where Boltz failed) and a missing mask.
 
+    `pooling` selects which file scripts/boltz_pool_embeddings.py wrote.
     Rows with no embedding are left as NaN here rather than filled, because the
     fill must come from each split's TRAINING molecules only -- the caller does
     that per split.
     """
+    if pooling not in POOLINGS:
+        raise ValueError(f"pooling must be one of {POOLINGS}, got {pooling!r}")
     index = pd.read_csv(FULL / f"index_{protocol}.csv")
     # Guard: the exporter's rows must be exactly load_protocol()'s rows.
     if len(index) != len(df) or not (index["smiles"].values == df["smiles"].values).all():
         raise ValueError(f"index_{protocol}.csv does not match the dataset; re-run the exporter")
 
-    pooled = np.load(FULL / "s_mean.npz")
+    pooled = np.load(FULL / f"s_{pooling}.npz")
     row_of = {m: i for i, m in enumerate(pooled["mol_ids"])}
     X = np.full((len(df), pooled["X"].shape[1]), np.nan, dtype=np.float32)
     missing = np.zeros(len(df), dtype=bool)
