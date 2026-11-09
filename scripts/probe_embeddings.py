@@ -76,6 +76,9 @@ def main() -> None:
         # representation, sum pooling should recover counts better here too.
         "ChemBERTa (sum)": chemberta_embeddings(smiles, pooling="sum"),
         "Boltz-2 s (mean)": boltz,
+        # The same test applied to Boltz-2: if mean pooling is what loses the
+        # H-bond donor counts, sum pooling should recover them here too.
+        "Boltz-2 s (sum)": load_vectors(df, "scaffold5", pooling="sum")[0],
     }
 
     results: dict[str, dict[str, dict[str, float]]] = {}

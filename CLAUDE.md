@@ -167,8 +167,17 @@ bbb-permeability-benchmark/
       tdc valid picks mean -> test 0.850, worst of three). ~200 valid molecules cannot
       resolve 0.01-0.03. Do NOT cite max 0.882 as a win; report the spread + the
       selection caveat. Only robust claim: [CLS] is last by valid AND test.
-      Still untested (needs Hopper, unreachable 2026-11-09): Boltz re-pooling,
-      protein context, pair rep z.
+      (f) BOLTZ RE-POOLING RUN (Hopper 2026-11-09; boltz_pool_embeddings.py now writes
+      s_{mean,sum,max}.npz in one pass, ~2 s; load_vectors/run_boltz_frozen take
+      --pooling; results renamed boltz_frozen_{pooling}_{protocol}.json).
+      PREDICTION (e) WAS FALSIFIED for Boltz: sum pooling fixes size (HeavyAtoms
+      0.864 -> 1.000, MolWt -> 0.995) but HBD only 0.518 -> 0.554 and RotatableBonds
+      0.563 -> 0.565, vs ChemBERTa-sum 0.896 / 0.893. So the information is ABSENT
+      from s, not hidden by pooling. Narrows cause to: no H atoms as tokens (one token
+      per HEAVY atom -> donor identity unrepresented) and s being per-atom (bond-level
+      flexibility lives in the PAIR rep z, not extracted). Downstream Boltz-sum
+      0.878 scaffold5 / 0.828 tdc — better than mean but still last overall.
+      NEXT, best motivated: pool and probe z. Still untested: protein context.
 - [x] README.md: recruiter-facing write-up with results, head-to-head win counts,
       leaderboard context, caveats, diagnostics. Keep claims tied to measurements —
       an earlier draft asserted an untested mechanism ("conformational noise") and
