@@ -192,6 +192,8 @@ bbb-permeability-benchmark/
       ChemBERTa pooling gaps (0.01-0.03) are not.
       Still untested: protein context (needs GPU + choice of protein); explicit-H run
       would settle the donor explanation.
+- [x] Boltz-2 = 521.0M params (boltz2_conf; boltz2_aff 529.4M, unused), measured
+      from the checkpoint on Hopper. Earlier "~400M" in the README was a guess, now fixed.
 - [x] README.md: recruiter-facing write-up with results, head-to-head win counts,
       leaderboard context, caveats, diagnostics. Keep claims tied to measurements —
       an earlier draft asserted an untested mechanism ("conformational noise") and
