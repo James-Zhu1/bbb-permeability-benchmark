@@ -33,7 +33,8 @@ from bbb.splits import N_SPLITS, PROTOCOLS, load_protocol, load_split
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--protocol", choices=PROTOCOLS, default="scaffold5")
-    parser.add_argument("--pooling", choices=POOLINGS, default="mean")
+    parser.add_argument("--pooling", default="mean",
+                        help="|".join(POOLINGS) + ", or a+b to concatenate (e.g. sum+zsum)")
     args = parser.parse_args()
 
     torch.set_num_threads(4)

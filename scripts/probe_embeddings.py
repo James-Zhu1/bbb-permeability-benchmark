@@ -79,11 +79,15 @@ def main() -> None:
         # The same test applied to Boltz-2: if mean pooling is what loses the
         # H-bond donor counts, sum pooling should recover them here too.
         "Boltz-2 s (sum)": load_vectors(df, "scaffold5", pooling="sum")[0],
+        # s is per-atom and cannot represent bond-level structure. z is the
+        # PAIR representation, where that structure would live.
+        "Boltz-2 z (mean)": load_vectors(df, "scaffold5", pooling="zmean")[0],
+        "Boltz-2 z (sum)": load_vectors(df, "scaffold5", pooling="zsum")[0],
     }
 
     results: dict[str, dict[str, dict[str, float]]] = {}
     print(f"Linear probe: R^2 on held-out scaffold5 test molecules, mean ± std over {N_SPLITS} splits\n")
-    header = f"{'property':<16}" + "".join(f"{name:>22}" for name in reps)
+    header = f"{'property':<16}" + "".join(f"{name:>20}" for name in reps)
     print(header)
     print("-" * len(header))
 
@@ -108,7 +112,7 @@ def main() -> None:
                 "r2_mean": float(np.mean(scores)),
                 "r2_std": float(np.std(scores, ddof=1)),
             }
-            row += f"{np.mean(scores):>15.3f} ± {np.std(scores, ddof=1):.3f}"
+            row += f"{np.mean(scores):>13.3f} ± {np.std(scores, ddof=1):.3f}"
         print(row)
 
     out = REPO_ROOT / "results" / "probe_scaffold5.json"

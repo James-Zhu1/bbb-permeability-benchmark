@@ -177,7 +177,21 @@ bbb-permeability-benchmark/
       per HEAVY atom -> donor identity unrepresented) and s being per-atom (bond-level
       flexibility lives in the PAIR rep z, not extracted). Downstream Boltz-sum
       0.878 scaffold5 / 0.828 tdc — better than mean but still last overall.
-      NEXT, best motivated: pool and probe z. Still untested: protein context.
+      (g) PAIR REP z EXTRACTED AND PROBED (2026-11-09) — BOTH predictions in (f) CONFIRMED,
+      a clean double dissociation: RotatableBonds s 0.565 -> z 0.912 (bond-level info IS
+      in z, not s); HBondDonors absent from BOTH (0.554 / 0.635) as predicted by
+      heavy-atom-only tokenization. boltz_pool_embeddings.py now also writes
+      s_{zmean,zsum,zdiag}.npz (z not symmetric; diagonal = self-pairs, pooled
+      separately); load_vectors supports "a+b" concatenation.
+      DOWNSTREAM: Boltz zsum 0.910 ± 0.025 scaffold5 / 0.842 ± 0.019 tdc — up from
+      s-mean 0.864/0.805, i.e. LAST -> MID-PACK (beats GNN + fine-tuned ChemBERTa on
+      scaffold5). s+z concat no better (0.894/0.840).
+      THIS ONE IS VALIDATION-SELECTED AND CITABLE: valid ranks all 5 Boltz variants in
+      EXACTLY test order on BOTH protocols (zsum > sum+zsum > sum > mean > max).
+      Contrast with (e): the +0.046 effect is resolvable by ~200 valid molecules, the
+      ChemBERTa pooling gaps (0.01-0.03) are not.
+      Still untested: protein context (needs GPU + choice of protein); explicit-H run
+      would settle the donor explanation.
 - [x] README.md: recruiter-facing write-up with results, head-to-head win counts,
       leaderboard context, caveats, diagnostics. Keep claims tied to measurements —
       an earlier draft asserted an untested mechanism ("conformational noise") and

@@ -19,7 +19,7 @@ from bbb.data import REPO_ROOT
 FULL = REPO_ROOT / "data" / "boltz" / "full"
 
 
-POOLINGS = ("mean", "sum", "max")
+POOLINGS = ("mean", "sum", "max", "zmean", "zsum", "zdiag")
 
 
 def load_vectors(
@@ -32,6 +32,12 @@ def load_vectors(
     fill must come from each split's TRAINING molecules only -- the caller does
     that per split.
     """
+    # "a+b" concatenates two poolings, e.g. "sum+zsum" = per-atom `s` features
+    # beside pair-representation `z` features.
+    if "+" in pooling:
+        parts = [load_vectors(df, protocol, p) for p in pooling.split("+")]
+        X = np.hstack([x for x, _ in parts])
+        return X, parts[0][1]
     if pooling not in POOLINGS:
         raise ValueError(f"pooling must be one of {POOLINGS}, got {pooling!r}")
     index = pd.read_csv(FULL / f"index_{protocol}.csv")

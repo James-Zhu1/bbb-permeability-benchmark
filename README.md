@@ -13,7 +13,7 @@ A common assumption in AI for drug discovery is that graph neural networks and p
 1. **Morgan fingerprints + Random Forest are the best or tied-best model** (0.924 AUROC on held-out scaffolds). No learned representation beats them on more than 3 of 5 splits under either protocol.
 2. **Frozen ChemBERTa-2 with mean pooling matches end-to-end fine-tuning on scaffold splits** (0.922 vs 0.891) while training 148k parameters instead of 3.4M — but it is 0.020 AUROC *behind* fine-tuning on the TDC protocol, so the two are best described as comparable rather than one dominating.
 3. **How you pool a frozen transformer matters as much as which model you use.** Across `[CLS]`/mean/sum/max, test AUROC spans 0.821–0.882 on TDC — wider than the gap between model families. `[CLS]` is reliably last (MLM pre-training never trains that slot to summarize a sequence; fine-tuning is what teaches it to). Which of the other three is best is **not reliably selectable**: validation ranks them differently from test on both protocols, which is the empirical case for this project's no-tuning rule.
-4. **Frozen Boltz-2 trunk features rank last on both protocols** (0.864 / 0.805), losing to the fingerprint baseline on 10 of 10 splits. Linear probes localize the cause to a *specific* gap rather than general weakness: Boltz-2 encodes molecular size as well as ChemBERTa, and perfectly under sum pooling (R² = 1.000), but **cannot represent H-bond donors (0.554) or rotatable bonds (0.565) at any pooling**, where ChemBERTa reaches 0.896 and 0.893. Those are exactly the descriptors passive permeation depends on. The likely reason is structural: the trunk emits one token per *heavy* atom (no hydrogens, so no donor identity) and `s` is a per-atom representation (so no bond-level flexibility). See [Diagnostics](#diagnostics-why-boltz-2-underperforms).
+4. **Which Boltz-2 representation you extract matters more than the model choice — and the obvious one is the wrong one.** The per-atom trunk output `s` ranks last on both protocols (0.864 / 0.805). Linear probes showed it cannot represent **H-bond donors (0.554) or rotatable bonds (0.565)** at any pooling, where ChemBERTa reaches ~0.89. That predicted bond-level structure lives in the **pair representation `z`** instead — and it does: `z` recovers rotatable bonds at **0.912** and lifts BBB AUROC to **0.910 / 0.842**, moving Boltz-2 from last to mid-pack. H-bond donors stay unrecoverable from *both*, consistent with hydrogens never being tokens. See [Diagnostics](#diagnostics-why-boltz-2-underperforms).
 
 ---
 
@@ -31,12 +31,17 @@ Two evaluation protocols, each with 5 committed splits that every model loads un
 | **GINE GNN, from scratch** | 2D molecular graph | 33k (all) | 0.900 ± 0.048 | 0.960 ± 0.021 | 0.847 ± 0.034 | 0.952 ± 0.013 |
 | **ChemBERTa-2, fine-tuned** | Pre-trained transformer | 3.4M (all) | 0.891 ± 0.052 | 0.950 ± 0.040 | **0.870 ± 0.020** | **0.958 ± 0.008** |
 | **ChemBERTa-2, frozen + `[CLS]`** | Pre-trained transformer | 148k head | 0.878 ± 0.027 | 0.951 ± 0.022 | 0.821 ± 0.012 | 0.942 ± 0.005 |
+| **Boltz-2 pair rep `z`, frozen + sum pool** ‡ | 3D co-folding foundation model | 148k head | 0.910 ± 0.025 | 0.966 ± 0.014 | 0.842 ± 0.019 | 0.946 ± 0.008 |
 | **Boltz-2 trunk `s`, frozen + mean pool** | 3D co-folding foundation model | 148k head | 0.864 ± 0.041 | 0.944 ± 0.019 | 0.805 ± 0.008 | 0.930 ± 0.004 |
 | *Random baseline* | — | — | *0.500* | *0.763* | *0.500* | *0.808* |
 
 All models use default, untuned hyperparameters. AUPRC is reported against the positive-class rate (the *random* AUPRC column above), not against 0.5.
 
-These six are the pre-planned comparison. Sum and max pooling were added afterwards while diagnosing the Boltz-2 result; they reach higher TDC scores (ChemBERTa+max 0.882) but are **not reported as wins**, because validation does not rank poolings the way test does. The full sweep and that caveat are in [Diagnostics §4](#4-pooling-choice-matters-but-validation-cannot-pick-it).
+The `s`-based rows are the pre-planned comparison.
+
+‡ **The `z` row was found by diagnosis and is validation-selected.** Extracting the pair representation instead of the per-atom one was not planned; it came from the probe showing `s` cannot represent bond-level structure. Unlike the pooling sweep below, **validation ranks it first on both protocols independently, matching the test ranking exactly**, so it is a legitimate selection rather than a test-set observation. It moves Boltz-2 from last place to mid-pack.
+
+Sum and max pooling of ChemBERTa were also added afterwards and reach higher TDC scores (ChemBERTa+max 0.882), but those are **not reported as wins** — validation does not rank them the way test does. Both cases are in [Diagnostics §4](#4-pooling-choice-matters-but-validation-cannot-pick-it).
 
 **Head-to-head vs. the fingerprint baseline**, counting per-split wins on the same test sets:
 
@@ -75,7 +80,7 @@ A **label-permutation test** (train on shuffled labels) yields ~0.56 AUROC rathe
 - **Morgan fingerprints** (`featurizers/morgan.py`) — 2048-bit radius-2 circular fingerprints (ECFP4-equivalent) + a 500-tree scikit-learn Random Forest.
 - **GINE graph neural network** (`models/gnn.py`) — 3-layer Graph Isomorphism Network with edge features, hidden dim 64, BatchNorm, residual connections, global mean pooling; **33,217 parameters**. Graphs carry 32 atom features and 7 bond features (`featurizers/graph.py`).
 - **ChemBERTa-2** (`models/chemberta.py`, `featurizers/chemberta_embed.py`) — `DeepChem/ChemBERTa-77M-MLM`, pinned to revision `ed8a5374`, evaluated three ways: full fine-tuning (AdamW, lr 2e-5), and frozen feature extraction with an MLP head comparing **padding-masked mean pooling** against **`[CLS]` extraction**.
-- **Boltz-2** (`scripts/run_boltz_frozen.py`) — biomolecular co-folding foundation model v2.2.1, run **ligand-only** on an NVIDIA L40S cluster to dump the **pre-diffusion trunk representation `s`** (384 numbers per heavy atom), mean-pooled over atoms. A pilot confirmed `s` is **bit-identical** at 10 vs. 200 diffusion sampling steps, confirming it is computed before any 3D coordinates are generated — so the 45-minute full run used the cheap setting.
+- **Boltz-2** (`scripts/run_boltz_frozen.py`) — biomolecular co-folding foundation model v2.2.1, run **ligand-only** on an NVIDIA L40S cluster to dump the **pre-diffusion trunk representation `s`** (384 numbers per heavy atom), mean-pooled over atoms. A pilot confirmed `s` is **bit-identical** at 10 vs. 200 diffusion sampling steps, confirming it is computed before any 3D coordinates are generated — so the 45-minute full run used the cheap setting. The same files also carry the **pair representation `z`** (`[atoms, atoms, 128]`), which diagnosis later showed to be the better choice; both are pooled by `scripts/boltz_pool_embeddings.py`.
 
 The frozen models share one head (`models/mlp_head.py`: standardize → dropout → `d→d` + tanh → dropout → `d→1`), so Boltz-2 and ChemBERTa differ only in where their 384 numbers come from.
 
@@ -85,7 +90,7 @@ The frozen models share one head (`models/mlp_head.py`: standardize → dropout 
 
 1. **Simplicity is hard to beat at this scale.** With ~1,500 training molecules, Morgan fingerprints remain a top-tier representation. Learned representations have more capacity to fit, but also more capacity to fit the training scaffolds specifically.
 2. **Pooling choice dominates the frozen/fine-tuned distinction.** Swapping `[CLS]` for mean pooling buys +0.044 AUROC — larger than the entire gap between frozen and fine-tuned ChemBERTa, and the full `[CLS]`→max span on TDC is +0.061. MLM pre-training gives the `[CLS]` slot no sequence-level training signal; fine-tuning is what makes it a usable summary vector. A cheap representation decision outweighed an expensive training decision here.
-3. **A foundation model's pre-training objective matters more than its size.** Boltz-2 is orders of magnitude larger than everything else here and still ranks last. Its objective (placing atoms in 3D, in a protein's presence) is further from passive permeability than "predict masked SMILES tokens" is — and the probe shows this concretely, as a selective loss of H-bond donor and lipophilicity information rather than a general lack of chemical knowledge.
+3. **Reading a foundation model correctly is a first-class decision.** The intuitive choice — the per-atom representation, mean-pooled, by analogy with token pooling in a language model — costs Boltz-2 0.046 AUROC versus the pair representation, more than any difference between model families in this benchmark. A pre-trained model is not one vector; which internal tensor you extract, and how you pool it, can matter more than which model you picked.
 4. **Diagnose before concluding, and report the diagnoses that fail.** Three intuitive explanations for Boltz-2's result were tested and rejected: an overfitting head (logistic regression scores no better), features that only encode size (it clears the size baseline on `scaffold5`), and mean-pooling washing out counts (sum pooling recovers size perfectly yet leaves donors and rotatable bonds untouched). Eliminating the pooling explanation is what localized the gap to missing hydrogens and missing bond-level structure.
 5. **At ~2,000 molecules, a held-out set of ~200 cannot adjudicate small differences.** Validation picked the wrong pooling on both protocols. Reporting a spread with its selection caveat is more useful than naming a winner that would not survive an honest protocol.
 
@@ -100,7 +105,7 @@ Stated plainly, because they bound what the results support:
 - **Boltz-2 saw salt-stripped SMILES** (largest fragment), affecting 168 raw TDC rows; the other models saw TDC's raw SMILES. Recorded in the results JSON.
 - **Frozen-model inputs are standardized** with training-set statistics, because Boltz-2's activations are ~70× ChemBERTa's scale (values to ~950) and would otherwise saturate `tanh`. Applied to *all* frozen models for parity; the frozen-ChemBERTa numbers here are from that re-run.
 - **Hardware.** Boltz-2 embeddings were computed on an NVIDIA L40S (Slurm cluster); **all model training and scoring ran on one machine**, so the scores are mutually comparable. Re-running on different hardware shifts third-decimal digits (verified: identical test AUROCs, ±0.001 on some valid/AUPRC values).
-- **The sum/max pooling runs are post-hoc diagnostics.** They were added while investigating the Boltz-2 result, not planned up front, and validation does not select among poolings reliably (see Diagnostics §4). They are reported in full rather than cherry-picked, and the headline comparison does not rest on them.
+- **The pooling sweep and the `z` extraction are post-hoc.** Both were added while investigating the Boltz-2 result, not planned up front. They are reported in full rather than cherry-picked, and they are treated differently on purpose: the `z` result is validation-selected (validation and test agree on both protocols) and is reported as a finding, while the ChemBERTa pooling differences are too small for validation to resolve and are reported only as a spread (see Diagnostics §4).
 - **Trained weights are not checkpointed.** Runs are seeded and reproducible, but no model is saved for inference on new molecules.
 
 ---
@@ -173,12 +178,32 @@ Re-pooling Boltz-2's per-atom embeddings by sum fixes size recovery completely b
 
 Sum pooling recovers atom *count* perfectly (R² = 1.000, essentially reading it off the vector norm), so the pooling itself works as intended. Yet H-bond donors move only +0.036 and rotatable bonds not at all — while the same pooling on ChemBERTa reaches 0.896 and 0.893. **The information is genuinely absent from `s`, not hidden by the pooling.**
 
-That failure is more informative than confirmation would have been, because it narrows the cause to two specifics:
+That failure is more informative than confirmation would have been, because it narrows the cause to two testable specifics:
 
-- **H-bond donors need hydrogens.** The trunk emits one token per *heavy* atom, so which heavy atoms carry an N-H or O-H is never explicitly represented.
-- **Rotatable bonds are a bond property.** `s` is a per-atom (single) representation; bond-level structure lives in the **pair representation `z`**, which we did not extract.
+- **H-bond donors need hydrogens.** The trunk emits one token per *heavy* atom, so which heavy atoms carry an N-H or O-H is never explicitly represented. Nothing we extract should recover donors.
+- **Rotatable bonds are a bond property.** `s` is a per-atom (single) representation; bond-level structure lives in the **pair representation `z`**. Extracting `z` should recover rotatable bonds.
 
-Downstream this matches: sum pooling lifts Boltz-2 from 0.864 → 0.878 (`scaffold5`) and 0.805 → 0.828 (`tdc`) — real, but still last among all representations. It gains roughly what better size encoding is worth, and no more.
+Downstream this matches: sum pooling lifts Boltz-2 from 0.864 → 0.878 (`scaffold5`) and 0.805 → 0.828 (`tdc`) — real, but roughly what better size encoding is worth, and no more.
+
+#### Extracting `z` confirms both predictions — a double dissociation
+
+`z` is the pairwise tensor (`[atoms, atoms, 128]`), pooled over off-diagonal pairs. It is not symmetric, and its diagonal sits on a different scale (self-pairs), so the diagonal is pooled separately.
+
+| Property | Boltz `s` (sum) | Boltz **`z`** (sum) | ChemBERTa (sum) |
+| :--- | :---: | :---: | :---: |
+| **Rotatable bonds** | 0.565 ✗ | **0.912** ✓ | 0.893 |
+| **H-bond donors** | 0.554 ✗ | 0.635 ✗ | 0.896 |
+| Heavy-atom count | 1.000 | 0.999 | 0.996 |
+| TPSA | 0.915 | 0.897 | 0.973 |
+
+Both predictions hold, and they dissociate cleanly:
+
+- **Rotatable bonds**, a bond property needing no hydrogens → **absent from `s`, present in `z`** (0.565 → 0.912, beating Morgan's 0.750).
+- **H-bond donors**, which require knowing where hydrogens sit → **absent from both** (0.554, 0.635 ± 0.247), as predicted by heavy-atom-only tokenization.
+
+Downstream, `z` lifts Boltz-2 to **0.910 ± 0.025** (`scaffold5`) and **0.842 ± 0.019** (`tdc`) — from last place to mid-pack, ahead of the from-scratch GNN and fine-tuned ChemBERTa on `scaffold5`. Concatenating `s` with `z` is no better than `z` alone (0.894 / 0.840).
+
+**This selection is honest.** Unlike the ChemBERTa pooling sweep below, validation ranks the five Boltz-2 variants in *exactly* the test order, independently on both protocols (`zsum` > `sum+zsum` > `sum` > `mean` > `max`). The effect (+0.046) is large enough for ~200 validation molecules to resolve; the ChemBERTa pooling differences (0.01–0.03) are not.
 
 Pooling also moves BBB AUROC as much as the model family does (`tdc`: `[CLS]` 0.821 → mean 0.850 → sum 0.879 → max 0.882 for ChemBERTa). **But the choice cannot be made honestly here.** Validation and test disagree on the ranking:
 
@@ -196,7 +221,8 @@ The one robust conclusion survives: **`[CLS]` is last on both protocols, by both
 | Hypothesis | Test | Status |
 | :--- | :--- | :--- |
 | Mean pooling destroys count-like information | Sum/max pooling, probed and run end-to-end | **Confirmed on ChemBERTa, falsified for Boltz-2's deficit** — sum pooling recovers size perfectly but not donors or rotatable bonds |
-| The pair representation `z` carries what `s` loses | Pool `z` and probe the same properties | **Not run** — now the best-motivated next step, since rotatable bonds are a bond-level property and `s` is per-atom |
+| The pair representation `z` carries what `s` loses | Pool `z` and probe the same properties | **Confirmed** — rotatable bonds 0.565 → 0.912, BBB AUROC 0.864 → 0.910 |
+| H-bond donors are unrecoverable because hydrogens are never tokens | Probe donors in both `s` and `z` | **Consistent** — absent from both (0.554, 0.635). Not proof; a run with explicit hydrogens would settle it |
 | No protein context — the trunk always trained with a macromolecular partner present | Re-embed alongside a fixed dummy protein and compare | **Not run** — needs GPU time and a choice of protein |
 
 Reproduce the diagnostics:
@@ -205,7 +231,7 @@ Reproduce the diagnostics:
 python scripts/probe_embeddings.py                       # linear probe (~15 min)
 python scripts/diagnose_heads.py --protocol tdc          # logistic regression + size baseline
 python scripts/run_chemberta_frozen.py --pooling sum     # also: cls, mean, max
-python scripts/run_boltz_frozen.py --pooling sum         # also: mean, max
+python scripts/run_boltz_frozen.py --pooling zsum        # also: mean, sum, max, zmean, zdiag, sum+zsum
 ```
 
 ---
