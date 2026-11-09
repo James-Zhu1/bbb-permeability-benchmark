@@ -1,129 +1,202 @@
 # Blood-Brain Barrier (BBB) Permeability Representation Benchmark
 
-A rigorous, leak-free benchmarking framework evaluating four distinct molecular representation paradigms on Blood-Brain Barrier (BBB) permeability prediction using the **Therapeutics Data Commons (TDC) `BBB_Martins`** dataset (~2,000 molecules).
+A leak-free benchmark of four molecular representation paradigms on blood-brain barrier permeability, using the **Therapeutics Data Commons (TDC) `BBB_Martins`** dataset (~2,000 molecules, 76% BBB+).
+
+All six models are evaluated on **identical, version-controlled splits** with a shared metrics harness and **no hyperparameter tuning**, so the differences reflect representation quality rather than search budget.
 
 ---
 
-## Executive Summary
+## Executive summary
 
-A pervasive assumption in modern AI for drug discovery is that deep graph neural networks and large pre-trained foundation models systematically outperform classical descriptors on tabular ADMET endpoints. 
+A common assumption in AI for drug discovery is that graph neural networks and pre-trained foundation models beat classical descriptors on ADMET endpoints. This benchmark tests that assumption under strict out-of-distribution Bemis-Murcko scaffold splits.
 
-This benchmark tests that assumption under **strict out-of-distribution (OOD) scaffold splits**. Under an untuned, fair-comparison protocol:
-1. **Classical Morgan Fingerprints (ECFP4) + Random Forest** remain competitive with or outperform all deep learning approaches (**0.924 AUROC** on held-out scaffolds).
-2. **ChemBERTa-2 frozen representations with mean pooling** match end-to-end fine-tuning while requiring a fraction of the compute, whereas **[CLS] token pooling degrades performance** because masked language modeling (MLM) does not explicitly adapt the [CLS] embedding.
-3. **Boltz-2 3D structural embeddings** underperform 2D topological baselines (**0.864 AUROC**), indicating that general biomolecular folding representations without target protein context introduce conformational noise on small-molecule passive diffusion tasks.
+1. **Morgan fingerprints + Random Forest are the best or tied-best model** (0.924 AUROC on held-out scaffolds). No learned representation beats them on more than 3 of 5 splits under either protocol.
+2. **Frozen ChemBERTa-2 with mean pooling matches end-to-end fine-tuning on scaffold splits** (0.922 vs 0.891) while training 148k parameters instead of 3.4M — but it is 0.020 AUROC *behind* fine-tuning on the TDC protocol, so the two are best described as comparable rather than one dominating.
+3. **`[CLS]` pooling is consistently worse than mean pooling** when the body is frozen (−0.044 scaffold5, −0.029 TDC). Masked-language-model pre-training never trains the `[CLS]` slot to summarize the sequence; fine-tuning is what teaches it to.
+4. **Frozen Boltz-2 trunk features rank last on both protocols** (0.864 / 0.805), losing to the fingerprint baseline on 10 of 10 splits. **Why they transfer poorly is not established here** — see [Open questions](#open-questions) for the candidate explanations and the experiments that would separate them.
 
 ---
 
-## Benchmark Results
+## Benchmark results
 
-All models were evaluated across two distinct evaluation schemes:
-- **`scaffold5` (Primary Protocol)**: 5 independent Bemis-Murcko scaffold splits (80/10/10), ensuring complete scaffold group isolation with zero leakage. Reports mean ± sample standard deviation across independent test partitions.
-- **`tdc` (Leaderboard Protocol)**: The official Therapeutics Data Commons benchmark split (fixed 406-molecule test set + 5 train/val scaffold reshuffles), evaluated via TDC's official `evaluate_many` metric (`ddof=0`).
+Two evaluation protocols, each with 5 committed splits that every model loads unchanged:
 
-| Model / Representation | Paradigm | Parameters | `scaffold5` Test AUROC | `scaffold5` Test AUPRC | `tdc` Test AUROC | `tdc` Test AUPRC |
+- **`scaffold5` (primary)** — 5 *independent* Bemis-Murcko scaffold splits (80/10/10) over the curated 1,955-molecule set, with whole scaffold groups assigned to exactly one of train/valid/test. Each split holds out a different region of chemical space, so the std reflects generalization across chemistry, not just seed noise. Std is the sample std (`ddof=1`) over the 5 test sets.
+- **`tdc` (leaderboard-comparable)** — TDC's official benchmark-group split on the **raw, uncleaned** 2,030 rows: a fixed 406-molecule test set plus 5 train/valid scaffold reshuffles (seeds 1–5). AUROC is reported by TDC's own `evaluate_many` (`ddof=0`), so it is directly comparable to the public leaderboard.
+
+| Model / representation | Paradigm | Trainable params | `scaffold5` AUROC | `scaffold5` AUPRC | `tdc` AUROC | `tdc` AUPRC |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: |
-| **Morgan ECFP4 (r=2, 2048-bit) + RF** | Classical Descriptors | 500 trees | **0.924 ± 0.024** | **0.971 ± 0.013** | **0.865 ± 0.005** | **0.954 ± 0.003** |
-| **ChemBERTa-2 (Frozen Mean Pool + MLP)** | Pre-trained Transformer | 3.4M (frozen) | **0.922 ± 0.036** | **0.968 ± 0.016** | 0.850 ± 0.011 | 0.947 ± 0.005 |
-| **GINE GNN (from scratch)** | 2D Molecular Graph | 33k | 0.900 ± 0.048 | 0.960 ± 0.021 | 0.847 ± 0.034 | 0.952 ± 0.013 |
-| **ChemBERTa-2 (Fine-Tuned)** | Pre-trained Transformer | 3.4M (trained) | 0.891 ± 0.052 | 0.950 ± 0.040 | **0.870 ± 0.020** | **0.958 ± 0.008** |
-| **ChemBERTa-2 (Frozen [CLS] + MLP)** | Pre-trained Transformer | 3.4M (frozen) | 0.878 ± 0.027 | 0.951 ± 0.022 | 0.821 ± 0.012 | 0.942 ± 0.005 |
-| **Boltz-2 Trunk `s` (Frozen Mean + MLP)** | 3D Structural Foundation | ~400M (frozen) | 0.864 ± 0.041 | 0.944 ± 0.019 | 0.805 ± 0.008 | 0.930 ± 0.004 |
-| *Random Baseline* | — | — | *0.500* | *0.763* | *0.500* | *0.808* |
+| **Morgan ECFP4 (r=2, 2048-bit) + RF** | Classical descriptors | 500 trees | **0.924 ± 0.024** | **0.971 ± 0.013** | 0.865 ± 0.005 | 0.954 ± 0.003 |
+| **ChemBERTa-2, frozen + mean pool** | Pre-trained transformer | 148k head | 0.922 ± 0.036 | 0.968 ± 0.016 | 0.850 ± 0.011 | 0.947 ± 0.005 |
+| **GINE GNN, from scratch** | 2D molecular graph | 33k (all) | 0.900 ± 0.048 | 0.960 ± 0.021 | 0.847 ± 0.034 | 0.952 ± 0.013 |
+| **ChemBERTa-2, fine-tuned** | Pre-trained transformer | 3.4M (all) | 0.891 ± 0.052 | 0.950 ± 0.040 | **0.870 ± 0.020** | **0.958 ± 0.008** |
+| **ChemBERTa-2, frozen + `[CLS]`** | Pre-trained transformer | 148k head | 0.878 ± 0.027 | 0.951 ± 0.022 | 0.821 ± 0.012 | 0.942 ± 0.005 |
+| **Boltz-2 trunk `s`, frozen + mean pool** | 3D co-folding foundation model | 148k head | 0.864 ± 0.041 | 0.944 ± 0.019 | 0.805 ± 0.008 | 0.930 ± 0.004 |
+| *Random baseline* | — | — | *0.500* | *0.763* | *0.500* | *0.808* |
 
-*Note: All models use default, untuned hyperparameters so performance differences strictly reflect representation quality rather than search budget.*
+All models use default, untuned hyperparameters. AUPRC is reported against the positive-class rate (the *random* AUPRC column above), not against 0.5.
 
----
+**Head-to-head vs. the fingerprint baseline**, counting per-split wins on the same test sets:
 
-## Architectural & Methodological Highlights
+| Model | Wins, `scaffold5` | Wins, `tdc` | Mean AUROC gap, `scaffold5` | Mean AUROC gap, `tdc` |
+| :--- | :---: | :---: | :---: | :---: |
+| ChemBERTa-2, fine-tuned | 0/5 | 3/5 | −0.033 | +0.005 |
+| GINE GNN | 1/5 | 2/5 | −0.024 | −0.018 |
+| ChemBERTa-2, frozen + mean | 2/5 | 0/5 | −0.002 | −0.015 |
+| ChemBERTa-2, frozen + `[CLS]` | 0/5 | 0/5 | −0.046 | −0.044 |
+| Boltz-2, frozen | 0/5 | 0/5 | −0.060 | −0.060 |
 
-### 1. Data Integrity & Leakage Prevention
-- **Dataset Curation**: Started with 2,030 raw molecules from TDC `BBB_Martins`. Stripped counterions/salts, merged duplicates, and dropped 11 contradictory label conflicts, yielding a 1,955 canonical molecule dataset.
-- **Split Contract**: Splits are generated once via Bemis-Murcko scaffold decomposition, saved as immutable indices in `splits/`, and version-controlled. Each split file embeds a SHA-256 dataset fingerprint that halts execution upon any data mismatch.
-- **Diagnostic Controls**: A label-shuffled permutation test yielded ~0.56 AUROC (rather than 0.50), traced via controls to the Random Forest capturing heavy-atom count / molecular weight as an orthogonal signal (size alone yielded 0.69 AUROC).
+**Leaderboard context.** On the `tdc` protocol these numbers are comparable to the [public TDC leaderboard](https://tdcommons.ai/benchmark/admet_group/07bbb/), where the top entries reach ~0.92 (MiniMol 0.924, MapLight 0.916) and tuned classical models sit around 0.90 (Lantern RF 0.908). Our best, 0.870, lands mid-table — expected for untuned baselines with no feature engineering or ensembling, and the gap is a tuning/feature gap rather than a protocol difference. These are local runs, not official submissions.
 
-### 2. Evaluated Representations
-- **Morgan Fingerprints (`morgan.py`)**: 2048-bit radius-2 circular fingerprints (ECFP4 equivalent) paired with a 500-estimator scikit-learn Random Forest.
-- **GINE Graph Neural Network (`gnn.py`)**: 3-layer Graph Isomorphism Network with Edge features (GINE), hidden dimension 64, batch normalization, residual connections, and global mean pooling (33,409 parameters). Featurized with 32 atom features and 7 bond features in PyTorch Geometric.
-- **ChemBERTa-2 (`chemberta.py`, `chemberta_embed.py`)**: `DeepChem/ChemBERTa-77M-MLM` evaluated under full fine-tuning (AdamW, lr=2e-5) vs. frozen feature extraction with an MLP classification head comparing padding-masked mean pooling against [CLS] token extraction.
-- **Boltz-2 (`run_boltz_frozen.py`)**: State-of-the-art biomolecular structure foundation model (v2.2.1). Inferred on an HPC cluster with NVIDIA L40S GPUs to extract pre-diffusion trunk representations `s` (384-dimensional per-atom vectors). Handled non-embeddable edge cases (4-character PDB ligand naming limits and conformer generation failures) via split-isolated training mean imputation. Discovered and resolved a 70x activation scale shift via train-fit z-score standardization.
-
----
-
-## Key Takeaways
-
-1. **Simplicity Often Beats Scale for ADMET**: For datasets with ~2,000 compounds, classical Morgan fingerprints remain exceptionally hard to beat. Deep representations risk overfitting or capturing orthogonal features that fail to generalize across unfamiliar scaffolds.
-2. **Mean Pooling vs. [CLS] in Chemistry Transformers**: Chemical language models pre-trained solely on Masked Language Modeling (MLM) do not update the `[CLS]` token with sequence-level information. Global mean pooling across token representations yields a +4.4% AUROC boost over `[CLS]`.
-3. **Foundation Model Misalignment**: Biomolecular 3D foundation models trained for complex co-folding do not automatically transfer to small-molecule property prediction. Without target macromolecular binding partners, conformational embeddings act as noisy representations for passive membrane permeability.
+**The split matters as much as the model.** On `scaffold5`, a single model's test AUROC moves by up to 0.13 between splits (the GNN spans 0.830–0.964). Any claim resting on one test set is unreliable at this dataset size, which is exactly why the primary protocol uses five independent held-out scaffold regions.
 
 ---
 
-## Repository Structure
+## Why these numbers are trustworthy
+
+### Data curation
+2,030 raw TDC molecules → **1,955 canonical molecules** for `scaffold5`: counter-ions/salts stripped to the largest fragment, SMILES canonicalized, exact duplicates merged, and **11 molecules with contradictory BBB+/BBB− labels dropped** (no ground truth exists for them). The `tdc` protocol deliberately skips this cleaning so its test set matches the leaderboard byte-for-byte.
+
+### Split contract
+Splits are generated **once**, saved as integer indices in `splits/`, and committed. No model ever re-splits. Each split file embeds a dataset fingerprint (truncated SHA-256 over the ordered `(smiles, label)` rows); `load_split()` recomputes it and **raises** on any mismatch, so a change to the cleaning logic or upstream data fails loudly instead of silently pointing at the wrong molecules. Verified per split: sets disjoint, every molecule used, **zero scaffold overlap** between train/valid/test, and both classes present everywhere.
+
+### Negative controls
+A **label-permutation test** (train on shuffled labels) yields ~0.56 AUROC rather than 0.50. Traced to the Random Forest ranking by molecular size, which is a genuine BBB signal (heavy-atom count alone gives 0.69 AUROC) and not label leakage — the training labels were random. That ~0.56 is the reference floor for "structure without labels" on these splits.
+
+### Identical measurement
+`src/bbb/metrics.py` is shared by every model. Every neural model uses the same early-stopping rule (best epoch by **validation** AUROC), and **the test set is scored exactly once**, after training.
+
+---
+
+## Representations evaluated
+
+- **Morgan fingerprints** (`featurizers/morgan.py`) — 2048-bit radius-2 circular fingerprints (ECFP4-equivalent) + a 500-tree scikit-learn Random Forest.
+- **GINE graph neural network** (`models/gnn.py`) — 3-layer Graph Isomorphism Network with edge features, hidden dim 64, BatchNorm, residual connections, global mean pooling; **33,217 parameters**. Graphs carry 32 atom features and 7 bond features (`featurizers/graph.py`).
+- **ChemBERTa-2** (`models/chemberta.py`, `featurizers/chemberta_embed.py`) — `DeepChem/ChemBERTa-77M-MLM`, pinned to revision `ed8a5374`, evaluated three ways: full fine-tuning (AdamW, lr 2e-5), and frozen feature extraction with an MLP head comparing **padding-masked mean pooling** against **`[CLS]` extraction**.
+- **Boltz-2** (`scripts/run_boltz_frozen.py`) — biomolecular co-folding foundation model v2.2.1, run **ligand-only** on an NVIDIA L40S cluster to dump the **pre-diffusion trunk representation `s`** (384 numbers per heavy atom), mean-pooled over atoms. A pilot confirmed `s` is **bit-identical** at 10 vs. 200 diffusion sampling steps, confirming it is computed before any 3D coordinates are generated — so the 45-minute full run used the cheap setting.
+
+The frozen models share one head (`models/mlp_head.py`: standardize → dropout → `d→d` + tanh → dropout → `d→1`), so Boltz-2 and ChemBERTa differ only in where their 384 numbers come from.
+
+---
+
+## Key findings
+
+1. **Simplicity is hard to beat at this scale.** With ~1,500 training molecules, Morgan fingerprints remain a top-tier representation. Learned representations have more capacity to fit, but also more capacity to fit the training scaffolds specifically.
+2. **Pooling choice dominates the frozen/fine-tuned distinction.** Swapping `[CLS]` for mean pooling buys +0.044 AUROC — larger than the entire gap between frozen and fine-tuned ChemBERTa. MLM pre-training gives the `[CLS]` slot no sequence-level training signal; fine-tuning is what makes it a usable summary vector.
+3. **A foundation model's pre-training objective matters more than its size.** Boltz-2 is orders of magnitude larger than everything else here and still ranks last. Its training objective (placing atoms in 3D, in a protein's presence) is further from passive membrane permeability than "predict masked SMILES tokens" is.
+
+---
+
+## Caveats
+
+Stated plainly, because they bound what the results support:
+
+- **Untuned by design.** Every model uses library defaults with no search. These are floors, not best-achievable scores. Any future tuning should use one shared budget per model, selected on validation AUROC only.
+- **Boltz-2 could not embed 2 of 1,966 molecules** — one exceeds its 4-character atom-naming limit (229 atoms including hydrogens), and RDKit failed to generate a 3D conformer for the other. Each split imputes them with **that split's training-set mean vector** (no valid/test information). At most 1 appears in any test set.
+- **Boltz-2 saw salt-stripped SMILES** (largest fragment), affecting 168 raw TDC rows; the other models saw TDC's raw SMILES. Recorded in the results JSON.
+- **Frozen-model inputs are standardized** with training-set statistics, because Boltz-2's activations are ~70× ChemBERTa's scale (values to ~950) and would otherwise saturate `tanh`. Applied to *all* frozen models for parity; the frozen-ChemBERTa numbers here are from that re-run.
+- **Hardware.** Boltz-2 embeddings were computed on an NVIDIA L40S (Slurm cluster); **all model training and scoring ran on one machine**, so the scores are mutually comparable. Re-running on different hardware shifts third-decimal digits (verified: identical test AUROCs, ±0.001 on some valid/AUPRC values).
+- **Trained weights are not checkpointed.** Runs are seeded and reproducible, but no model is saved for inference on new molecules.
+
+---
+
+## Open questions
+
+Why frozen Boltz-2 features transfer poorly is **untested**. Candidate explanations, with the experiment that would distinguish them:
+
+| Hypothesis | Test |
+| :--- | :--- |
+| No protein context — the trunk always trained with a macromolecular partner present | Re-embed a sample alongside a fixed dummy protein; compare |
+| Mean-pooling over atoms dilutes the signal | Try sum/max pooling, concatenated mean+std, or the pair representation `z` (files already saved) |
+| The pre-training objective encodes the wrong information | Probe whether MW, TPSA and H-bond donor counts are linearly recoverable from the embeddings |
+| The 148k-parameter head overfits 1,500 molecules | Swap in logistic regression on the same vectors |
+| The features mostly encode molecular size | Add a size-only baseline (0.69 AUROC) and see where Boltz-2 sits relative to it |
+
+---
+
+## Repository structure
 
 ```
 bbb-permeability-benchmark/
-├── splits/                   # Versioned scaffold5 and tdc split indices
+├── splits/                    # Committed scaffold5 + tdc split indices — the contract
 ├── src/bbb/
-│   ├── data.py               # Data loading, salt stripping, and deduplication
-│   ├── splits.py             # Bemis-Murcko splitting and protocol loaders
-│   ├── metrics.py            # Unified evaluation harness (AUROC, AUPRC)
+│   ├── data.py                # Loading, salt stripping, dedup, dataset fingerprint
+│   ├── splits.py              # Bemis-Murcko splitting, TDC splits, load_protocol()
+│   ├── metrics.py             # Shared evaluation harness (AUROC, AUPRC)
 │   ├── featurizers/
-│   │   ├── morgan.py         # 2048-bit ECFP4 generator
-│   │   ├── graph.py          # PyG graph constructor (32 atom / 7 bond feats)
-│   │   └── chemberta_embed.py# Token extraction & pooling strategies
+│   │   ├── morgan.py          # 2048-bit ECFP4
+│   │   ├── graph.py           # PyG graphs (32 atom / 7 bond features)
+│   │   └── chemberta_embed.py # Frozen extraction + pooling strategies
 │   └── models/
-│       ├── fingerprint_rf.py # Random Forest baseline
-│       ├── gnn.py            # 3-layer GINE architecture
-│       ├── chemberta.py      # End-to-end transformer fine-tuner
-│       └── mlp_head.py       # Standardized MLP probe for frozen embeddings
-├── scripts/                  # Standalone execution runners per model & protocol
-├── slurm/                    # HPC job submission scripts for L40S GPU cluster
-└── results/                  # Raw benchmark metric JSONs
+│       ├── fingerprint_rf.py  # Random Forest baseline
+│       ├── gnn.py             # 3-layer GINE + training loop
+│       ├── chemberta.py       # End-to-end fine-tuning
+│       └── mlp_head.py        # Standardized head for frozen embeddings
+├── scripts/                   # One runner per model; all take --protocol
+├── slurm/                     # HPC job scripts (L40S GPU cluster)
+└── results/                   # Per-split metrics as {model}_{protocol}.json
 ```
 
 ---
 
 ## Quickstart
 
-### 1. Environment Setup
+### Environment
+
 ```bash
-# Clone repository
 git clone https://github.com/James-Zhu1/bbb-permeability-benchmark
 cd bbb-permeability-benchmark
 
-# Create virtual environment (Python 3.11 recommended)
-python3.11 -m venv .venv
-source .venv/bin/activate
+# venv (Python 3.11; 3.13 breaks PyTDC and the Boltz-2 deps)
+python3.11 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt && pip install -e .
 
-# Install dependencies and editable package
-pip install -r requirements.txt
-pip install -e .
+# or conda, e.g. on a cluster
+conda env create -f environment.yml && conda activate bbb
 ```
 
-### 2. Running Benchmarks
-All scripts accept `--protocol scaffold5` (default) or `--protocol tdc`:
+The dataset is not committed; TDC downloads it to `data/raw/` on first run. The committed splits' fingerprint check confirms you got identical data.
+
+### Reproduce the splits (optional — they are committed)
 
 ```bash
-# Morgan Fingerprints + Random Forest
-python scripts/run_fingerprint_rf.py --protocol scaffold5
+python scripts/make_splits.py                  # scaffold5 -> splits/
+python scripts/make_splits.py --protocol tdc   # TDC       -> splits/tdc/
+```
+Both refuse to overwrite existing split files without `--force`, and re-verify every invariant from disk.
 
-# GINE Graph Neural Network (from scratch)
-python scripts/run_gnn.py --protocol scaffold5
+### Run the benchmarks
 
-# ChemBERTa-2 Fine-Tuning
-python scripts/run_chemberta.py --protocol scaffold5
+Every runner takes `--protocol scaffold5` (default) or `--protocol tdc`:
 
-# ChemBERTa-2 Frozen Embeddings (mean pooling)
-python scripts/run_chemberta_frozen.py --pooling mean --protocol scaffold5
+```bash
+python scripts/run_fingerprint_rf.py                      #  ~6 s
+python scripts/run_gnn.py                                 # ~10 s/split
+python scripts/run_chemberta.py                           # ~2 min/split
+python scripts/run_chemberta_frozen.py --pooling mean     # ~20 s  (also: --pooling cls)
 ```
 
-### 3. Reproducing Results
-All metrics output directly to `results/{model}_{protocol}.json`. To regenerate the comparative results table:
+### Boltz-2 pipeline (needs a GPU)
+
+```bash
+python scripts/boltz_export_inputs.py          # bbb env: 1,966 ligand-only YAMLs + row index
+sbatch slurm/boltz_embed.sbatch                # boltz env: ~45 min on 1x L40S
+python scripts/boltz_pool_embeddings.py        # bbb env: s -> mean over atoms
+python scripts/run_boltz_frozen.py             # bbb env: head + 5 splits
+```
+
+Boltz-2 lives in a **separate conda env** (`environment-boltz.yml`): it pins `scikit-learn==1.6.1` and `rdkit>=2024.3.2`, which conflict with the main env, and a different RDKit could change canonical SMILES and invalidate the split fingerprints. The `bbb` env therefore owns the dataset and exports the exact SMILES Boltz sees; the `boltz` env only turns inputs into embeddings.
+
+### Summarize results
+
 ```bash
 python -c "
-import json, glob
-for path in sorted(glob.glob('results/*_scaffold5.json')):
-    data = json.load(open(path))
-    print(f\"{data['model']}: AUROC = {data['summary']['test']['auroc']['mean']:.3f} ± {data['summary']['test']['auroc']['std']:.3f}\")
+import json, glob, pathlib
+for p in sorted(glob.glob('results/*.json')):
+    d = json.load(open(p)); t = d['summary']['test']
+    print(f\"{pathlib.Path(p).stem:<38} AUROC {t['auroc']['mean']:.3f} ± {t['auroc']['std']:.3f}\"
+          f\"   AUPRC {t['auprc']['mean']:.3f} ± {t['auprc']['std']:.3f}\")
 "
 ```
+
+Each JSON also carries the per-split metrics, the full training history, the exact config, and the dataset fingerprint the run was validated against.
